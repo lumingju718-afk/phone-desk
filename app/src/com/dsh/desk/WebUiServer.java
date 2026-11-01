@@ -107,6 +107,8 @@ public class WebUiServer extends Thread {
             int contentLen = 0;
             String cookie = "";
             String line;
+            String fwdProto = "";
+            String reqHost = "";
             while ((line = br.readLine()) != null && !line.isEmpty()) {
                 int c = line.indexOf(':');
                 if (c <= 0) continue;
@@ -114,6 +116,14 @@ public class WebUiServer extends Thread {
                 String v = line.substring(c + 1).trim();
                 if (k.equals("content-length")) contentLen = parseInt(v, 0);
                 else if (k.equals("cookie")) cookie = v;
+                else if (k.equals("x-forwarded-proto")) fwdProto = v.toLowerCase();
+                else if (k.equals("host")) reqHost = v;
+            }
+
+            // 隧道以 http 进来时强制跳 https，避免口令走明文
+            if ("http".equals(fwdProto) && !reqHost.isEmpty()) {
+                sendRedirect(s, "https://" + reqHost + target, null);
+                return;
             }
             StringBuilder body = new StringBuilder();
             if ("POST".equals(method) && contentLen > 0 && contentLen <= 8192) {
