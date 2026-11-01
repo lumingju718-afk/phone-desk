@@ -26,7 +26,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -72,6 +74,10 @@ public class MainActivity extends Activity {
     private final TextView[] sub = new TextView[9];
     private TextView btnDefault;
     private TextView tvAcc;
+    private TextView tvBtnChat;
+    private TextView tvNapcatToken;
+    private volatile boolean tokenBusy = false;
+    private volatile long tokenFetchedAt = 0;
 
     private volatile boolean busy = false;
 
@@ -168,12 +174,45 @@ public class MainActivity extends Activity {
         blp.topMargin = dp(12);
         col.addView(buttons, blp);
 
+        // second row: logs / chat
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.setGravity(Gravity.CENTER);
+        row2.addView(button("日志", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, LogsActivity.class));
+            }
+        }));
+        tvBtnChat = button("消息", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, ChatActivity.class));
+            }
+        });
+        row2.addView(tvBtnChat);
+        LinearLayout.LayoutParams r2lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        r2lp.topMargin = dp(6);
+        col.addView(row2, r2lp);
+
         tvAcc = text("", 12, AMBER, false);
         tvAcc.setPadding(0, dp(8), 0, 0);
         tvAcc.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { openAccessibilitySettings(); }
         });
         col.addView(tvAcc);
+
+        tvNapcatToken = text("NapCat WebUI Token: 读取中…", 12, DIM, false);
+        tvNapcatToken.setPadding(0, dp(6), 0, dp(2));
+        tvNapcatToken.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { copyNapcatToken(); }
+        });
+        tvNapcatToken.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                openUrl("http://127.0.0.1:6099/webui?token=" + NapCatToken.get());
+                return true;
+            }
+        });
+        col.addView(tvNapcatToken);
 
         btnDefault = text("点这里把本应用设为默认桌面", 12, BLUE, false);
         btnDefault.setPadding(0, dp(10), 0, dp(4));
@@ -182,7 +221,11 @@ public class MainActivity extends Activity {
         });
         col.addView(btnDefault);
 
-        return col;
+        ScrollView sc = new ScrollView(this);
+        sc.setBackgroundColor(BG);
+        sc.setFillViewport(true);
+        sc.addView(col);
+        return sc;
     }
 
     private View buildCard(int index, String title) {
@@ -396,6 +439,60 @@ public class MainActivity extends Activity {
 
         updateDefaultButton();
         updateAcc();
+        updateChatBadge();
+        maybeFetchToken();
+    }
+
+    private void maybeFetchToken() {
+        if (tvNapcatToken == null || tokenBusy) return;
+        if (System.currentTimeMillis() - tokenFetchedAt < 60000L) return;
+        tokenBusy = true;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final String t = NapCatToken.fetch(MainActivity.this);
+                ui.post(new Runnable() {
+                    @Override public void run() {
+                        tokenBusy = false;
+                        tokenFetchedAt = System.currentTimeMillis();
+                        if (t != null && !t.isEmpty()) {
+                            tvNapcatToken.setText("NapCat WebUI Token: " + t + " · 点按复制");
+                            tvNapcatToken.setTextColor(TEXT);
+                        } else if (tvNapcatToken.getText().toString().startsWith("NapCat WebUI Token: 读取中")) {
+                            tvNapcatToken.setText("NapCat WebUI Token: 读取失败（需 Termux 桥接）");
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void copyNapcatToken() {
+        String t = NapCatToken.get();
+        if (t == null || t.isEmpty()) {
+            Toast.makeText(this, "Token 还没读到", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("napcat_token", t));
+            }
+            Toast.makeText(this, "已复制 " + t, Toast.LENGTH_SHORT).show();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void updateChatBadge() {
+        if (tvBtnChat == null) return;
+        int unread = ChatStore.unread(this);
+        if (unread > 0) {
+            tvBtnChat.setText("消息 " + unread);
+            tvBtnChat.setTextColor(AMBER);
+        } else {
+            tvBtnChat.setText("消息");
+            tvBtnChat.setTextColor(TEXT);
+        }
     }
 
     private void updateAcc() {

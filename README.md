@@ -4,7 +4,7 @@
 
 把一台闲置 Android 手机变成「服务器节点」的启动器（桌面）应用：主屏直接显示服务器状态，内置终端，并对外提供一套局域网 HTTP 控制接口。
 
-当前版本：**0.6.0**（versionCode 7）
+当前版本：**0.8.0**（versionCode 12）
 
 ## 功能
 
@@ -20,12 +20,19 @@
 | 开机自启 | `BOOT_COMPLETED` 接收器 + `START_STICKY` |
 | 默认桌面 | 声明 HOME 意图；未设为默认时主屏底部有引导按钮 |
 | 应用抽屉 | 长按空白处或点「应用」查看全部已安装应用 |
+| **服务日志页** | 切换查看 AstrBot / NapCat 日志尾部（自动刷新），可**启动/重启**对应服务 |
+| **WebUI Token** | 主屏直接显示 NapCat WebUI 当前 token；点按复制，长按打开带 token 的 WebUI |
+| **消息页** | 助手远程发消息到手机（带通知），用户也可在页面回复；主屏显示未读数 |
 
 ## 架构
 
 ```
 MainActivity        主屏：状态面板 + 快捷按钮 + 启动后台服务
 TerminalActivity    终端页：命令输入/输出 + 远程地址提示
+LogsActivity        日志页：AstrBot/NapCat 日志 + 启动/重启按钮
+ChatActivity        消息页：助手↔用户 消息气泡 + 通知
+ChatStore           消息 JSONL 存储 / 未读数 / 通知
+SvcControl          NapCat/AstrBot 启停命令 + 端口探活
 ExecService         前台服务（常驻通知），持有 HttpExecServer
 HttpExecServer      ServerSocket 实现的极简 HTTP：/ping /exec /termux /ui/* /callback
 Shell               以应用 UID 执行 /system/bin/sh
@@ -115,6 +122,10 @@ bash build.sh
 | `GET /ui/global?a=back\|home\|recents\|notif\|quick` | 全局操作 |
 | `GET /ui/text?text=` | 向当前输入框填入文本 |
 | `GET /ui/click?text=`（或 `id=`） | 按文字/资源 id 点击 |
+| `GET /logs?token=&which=napcat\|astrbot&lines=200` | 读取服务日志尾部（≤500 行） |
+| `GET /chat?token=&since=` | 读取消息列表与未读数 |
+| `GET\|POST /chat/send?token=&from=ai\|user&text=` | 发送一条消息（`from=ai` 会触发手机通知） |
+| `GET /svc?token=&name=napcat\|astrbot&action=start\|stop\|restart` | 启动/停止/重启服务 |
 
 示例：
 
@@ -151,11 +162,14 @@ README.md / CHANGELOG.md
 - UI 控制要求手机**已解锁并亮屏**；无障碍不能点亮屏幕。
 - 银行/密码等安全窗口：截图返回空、节点树为空，属系统限制。
 - 截图接口约 1 次/秒，连续调用会失败。
+- 日志页要求 Termux 桥接可用；服务从未启动过时日志文件不存在，页面会给出提示。
+- 消息记录保存在应用私有目录，卸载即清空；手机侧靠系统通知提示新消息。
+- NapCat 重启后若需要扫码，日志页会显示二维码解码 URL，需要手机扫码完成登录。
 
 ## 版本管理
 
 - 远程仓库：`https://github.com/lumingju718-afk/phone-desk`（公开）
-- 发版：`git tag -a v0.5.1 -m "..."` 后 `git push origin main --tags`
+- 发版：`git tag -a v0.7.0 -m "..."` 后 `git push origin main --tags`
 - 若本机访问 GitHub 需要代理：
 
   ```powershell

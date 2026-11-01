@@ -30,7 +30,7 @@ public class TermuxRunner {
         }
     }
 
-    private static final String TMP = "/data/data/com.termux/files/usr/tmp/.dsh_out";
+    private static final String TMP_PREFIX = "/data/data/com.termux/files/usr/tmp/.dsh_out_";
 
     public static Shell.Result run(Context ctx, String cmd, int timeoutSec,
                                    String token, int port) {
@@ -39,10 +39,11 @@ public class TermuxRunner {
         Callback cb = new Callback();
         PENDING.put(id, cb);
 
-        String script = "{ " + cmd + " ; } > " + TMP + " 2>&1; c=$?; "
-                + "curl -s --max-time 8 -X POST --data-binary @" + TMP + " "
+        String tmp = TMP_PREFIX + id;
+        String script = "{ " + cmd + " ; } > " + tmp + " 2>&1; c=$?; "
+                + "curl -s --max-time 8 -X POST --data-binary @" + tmp + " "
                 + "'http://127.0.0.1:" + port + "/callback?token=" + token
-                + "&id=" + id + "&code='$c >/dev/null 2>&1";
+                + "&id=" + id + "&code='$c >/dev/null 2>&1; rm -f " + tmp;
         try {
             Intent i = new Intent();
             i.setClassName("com.termux", "com.termux.app.RunCommandService");

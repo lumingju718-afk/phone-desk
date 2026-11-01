@@ -2,6 +2,7 @@ package com.dsh.desk;
 
 import android.content.Context;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -11,6 +12,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,6 +22,11 @@ import java.util.Map;
  * 只监听局域网，用于远程接管手机（命令以本应用权限执行）。
  */
 public class HttpExecServer {
+
+    private static final String PROOT_ROOTFS =
+            "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu-base/rootfs";
+    private static final String LOG_NAPCAT = PROOT_ROOTFS + "/root/napcat.log";
+    private static final String LOG_ASTRBOT = PROOT_ROOTFS + "/root/astrbot.log";
 
     private final int port;
     private final String token;
@@ -183,13 +190,122 @@ public class HttpExecServer {
             return;
         }
 
+        if (path.equals("/logs")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            String which = params.get("which");
+            if (which == null || which.isEmpty()) which = "napcat";
+            if (!which.equals("napcat") && !which.equals("astrbot")) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"which must be napcat|astrbot\"}");
+                return;
+            }
+            int lines = parseInt(params.get("lines"), 200);
+            if (lines < 1) lines = 1;
+            if (lines > 500) lines = 500;
+            String logPath = which.equals("napcat") ? LOG_NAPCAT : LOG_ASTRBOT;
+            Shell.Result r = TermuxRunner.run(context,
+                    "tail -n " + lines + " '" + logPath + "'", 15, token, port);
+            JSONObject o = new JSONObject();
+            o.put("ok", r.code == 0);
+            o.put("which", which);
+            o.put("code", r.code);
+            o.put("text", r.out);
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat/send")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            String from = params.get("from");
+            if (from == null || from.isEmpty()) from = "user";
+            if (!from.equals("ai") && !from.equals("user")) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"from must be ai|user\"}");
+                return;
+            }
+            String text = params.get("text");
+            if (text == null || text.trim().isEmpty()) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"missing text\"}");
+                return;
+            }
+            if (text.length() > 2000) text = text.substring(0, 2000);
+            long id = ChatStore.append(context, from, text);
+            if ("ai".equals(from)) ChatStore.notify(context, text);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("id", id);
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            long since = parseLong(params.get("since"), 0);
+            int limit = parseInt(params.get("limit"), 100);
+            if (limit < 1) limit = 1;
+            if (limit > 200) limit = 200;
+            List<JSONObject> msgs = ChatStore.read(context, since, limit);
+            JSONArray arr = new JSONArray();
+            for (JSONObject m : msgs) arr.put(m);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("messages", arr);
+            o.put("unread", ChatStore.unread(context));
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/svc")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            String name = params.get("name");
+            if (name == null || name.isEmpty()) name = "napcat";
+            if (!name.equals("napcat") && !name.equals("astrbot")) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"name must be napcat|astrbot\"}");
+                return;
+            }
+            String action = params.get("action");
+            if (action == null || action.isEmpty()) action = "restart";
+            if (!action.equals("start") && !action.equals("stop") && !action.equals("restart")) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"action must be start|stop|restart\"}");
+                return;
+            }
+            Shell.Result r = SvcControl.exec(context, name, action, token, port);
+            JSONObject o = new JSONObject();
+            o.put("ok", r.code == 0);
+            o.put("name", name);
+            o.put("action", action);
+            o.put("code", r.code);
+            o.put("out", r.out);
+            o.put("running", SvcControl.isRunning(name));
+            respond(s, 200, o.toString());
+            return;
+        }
+
         if (path.startsWith("/ui")) {
             handleUi(path, params, s);
             return;
         }
 
         if (path.equals("/") || path.isEmpty()) {
-            respond(s, 200, "{\"ok\":true,\"endpoints\":[\"/ping\",\"/exec?token=&cmd=\",\"/termux?token=&cmd=\"]}");
+            respond(s, 200, "{\"ok\":true,\"endpoints\":["
+                    + "\"/ping\",\"/exec?token=&cmd=\",\"/termux?token=&cmd=\","
+                    + "\"/logs?token=&which=napcat|astrbot\","
+                    + "\"/chat?token=\",\"/chat/send?token=&from=ai|user&text=\","
+                    + "\"/svc?token=&name=napcat|astrbot&action=start|stop|restart\"]}");
             return;
         }
 
@@ -293,6 +409,14 @@ public class HttpExecServer {
     private static float parseFloat(String s, float def) {
         try {
             return Float.parseFloat(s.trim());
+        } catch (Throwable e) {
+            return def;
+        }
+    }
+
+    private static long parseLong(String s, long def) {
+        try {
+            return Long.parseLong(s.trim());
         } catch (Throwable e) {
             return def;
         }
