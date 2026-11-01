@@ -113,3 +113,15 @@ README.md / CHANGELOG.md
 - Termux 桥接要求 Termux 开启 `allow-external-apps=true`，且应用被授予 `RUN_COMMAND` 权限。
 - `/exec` 为应用 UID，读不到 Termux 私有目录；需要跨 UID 的操作走 `/termux`。
 - 状态面板默认探测 `192.168.1.13` 的 ESP32 灯，换网络需改 `MainActivity.ESP_URL`。
+
+## 版本管理
+
+- 远程仓库：`https://github.com/lumingju718-afk/phone-desk`（私有）
+- 发版：`git tag -a v0.5.1 -m "..."` 后 `git push origin main --tags`
+- 若本机访问 GitHub 需要代理：
+
+  ```powershell
+  git config --global http.https://github.com.proxy http://127.0.0.1:7890
+  $env:HTTPS_PROXY='http://127.0.0.1:7890'   # gh CLI 需要环境变量
+  ```
+
