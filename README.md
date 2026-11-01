@@ -4,7 +4,7 @@
 
 把一台闲置 Android 手机变成「服务器节点」的启动器（桌面）应用：主屏直接显示服务器状态，内置终端，并对外提供一套局域网 HTTP 控制接口。
 
-当前版本：**0.8.0**（versionCode 12）
+当前版本：**0.9.0**（versionCode 13）
 
 ## 功能
 
@@ -110,6 +110,8 @@ bash build.sh
 | 接口 | 说明 |
 |---|---|
 | `GET /ping` | 探活，返回 `{"ok":true,"service":"desk-exec"}` |
+| `GET /status` | 状态聚合：电量/内存/存储/运行时长/IP/服务端口（给 ESP32 网页用） |
+| `GET /token?token=` | NapCat WebUI token（60 秒缓存） |
 | `GET /exec?token=&cmd=` | 以应用 UID 执行命令 |
 | `GET /termux?token=&cmd=` | 交给 Termux 执行（需 RUN_COMMAND 权限） |
 | `POST /callback?token=&id=&code=` | Termux 回传结果的内部接口 |
@@ -154,10 +156,17 @@ build.ps1
 README.md / CHANGELOG.md
 ```
 
+## ESP32 托管界面
+
+`E:\work\charge_led` 固件除了原来的充电灯页，还提供一页网页版服务器桌面：`http://<ESP32_IP>/desk`。
+页面本身由 ESP32 静态托管（存在 flash 里），数据和操作由浏览器**直连手机** `8089`：
+`/status`、`/logs`、`/chat`、`/chat/send`、`/token`、`/svc`。
+手机端已加 CORS 头（`Access-Control-Allow-Origin: *`），因此无需 ESP32 代理。
+前提：手机安装 ≥ 0.9.0 的 App，且 ESP32 与手机在同一局域网。
+
 ## 已知限制
 
-- Termux 桥接要求 Termux 开启 `allow-external-apps=true`，且应用被授予 `RUN_COMMAND` 权限。
-- `/exec` 为应用 UID，读不到 Termux 私有目录；需要跨 UID 的操作走 `/termux`。
+- Termux 桥接要求 Termux 开启 `allow-external-apps=true`，且应用被授予 `RUN_COMMAND` 权限。- `/exec` 为应用 UID，读不到 Termux 私有目录；需要跨 UID 的操作走 `/termux`。
 - 状态面板默认探测 `192.168.1.13` 的 ESP32 灯，换网络需改 `MainActivity.ESP_URL`。
 - UI 控制要求手机**已解锁并亮屏**；无障碍不能点亮屏幕。
 - 银行/密码等安全窗口：截图返回空、节点树为空，属系统限制。

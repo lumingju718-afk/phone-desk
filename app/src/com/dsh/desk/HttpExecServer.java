@@ -122,8 +122,32 @@ public class HttpExecServer {
             params.putAll(parseQuery(body.toString()));
         }
 
+        if ("OPTIONS".equals(method)) {
+            respond(s, 200, "{\"ok\":true}");
+            return;
+        }
+
         if (path.equals("/ping")) {
             respond(s, 200, "{\"ok\":true,\"service\":\"desk-exec\"}");
+            return;
+        }
+
+        if (path.equals("/status")) {
+            respond(s, 200, StatusApi.collect(context).toString());
+            return;
+        }
+
+        if (path.equals("/token")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            String nt = NapCatToken.fetch(context);
+            JSONObject o = new JSONObject();
+            o.put("ok", nt != null && !nt.isEmpty());
+            o.put("token", nt == null ? "" : nt);
+            respond(s, 200, o.toString());
             return;
         }
 
@@ -303,6 +327,7 @@ public class HttpExecServer {
         if (path.equals("/") || path.isEmpty()) {
             respond(s, 200, "{\"ok\":true,\"endpoints\":["
                     + "\"/ping\",\"/exec?token=&cmd=\",\"/termux?token=&cmd=\","
+                    + "\"/status\",\"/token?token=\","
                     + "\"/logs?token=&which=napcat|astrbot\","
                     + "\"/chat?token=\",\"/chat/send?token=&from=ai|user&text=\","
                     + "\"/svc?token=&name=napcat|astrbot&action=start|stop|restart\"]}");
@@ -444,6 +469,9 @@ public class HttpExecServer {
         byte[] bytes = body.getBytes("UTF-8");
         String head = "HTTP/1.1 " + code + " " + (code == 200 ? "OK" : "ERR") + "\r\n"
                 + "Content-Type: application/json; charset=utf-8\r\n"
+                + "Access-Control-Allow-Origin: *\r\n"
+                + "Access-Control-Allow-Methods: GET,POST,OPTIONS\r\n"
+                + "Access-Control-Allow-Headers: *\r\n"
                 + "Content-Length: " + bytes.length + "\r\n"
                 + "Connection: close\r\n\r\n";
         OutputStream os = s.getOutputStream();

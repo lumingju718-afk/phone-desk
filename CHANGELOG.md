@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-11-01
+
+- 供「托管界面」使用的新接口：
+  - `GET /status`：电量/内存/存储/运行时长/IP/服务端口聚合
+  - `GET /token?token=`：NapCat WebUI token（60 秒缓存）
+- 所有响应加 CORS 头（`Access-Control-Allow-Origin: *`）并支持 `OPTIONS` 预检，
+  浏览器里由 ESP32 托管的网页可以直接读取手机接口
+- 版本号 0.9.0（versionCode 13）
+
 ## 0.8.0 — 2026-11-01
 
 - 主屏显示当前 **NapCat WebUI Token**（从容器 `config/webui.json` 读取，60 秒刷新一次）：

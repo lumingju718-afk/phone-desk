@@ -16,6 +16,7 @@ public class NapCatToken {
             Pattern.compile("\"token\"\\s*:\\s*\"([^\"]+)\"");
 
     private static volatile String cached = "";
+    private static volatile long fetchedAt = 0;
 
     public static String get() {
         return cached;
@@ -25,8 +26,11 @@ public class NapCatToken {
         if (t != null) cached = t;
     }
 
-    /** 通过 Termux 桥接读取，失败返回 null */
+    /** 通过 Termux 桥接读取，失败返回 null；60 秒内复用缓存 */
     public static String fetch(Context ctx) {
+        if (!cached.isEmpty() && System.currentTimeMillis() - fetchedAt < 60000L) {
+            return cached;
+        }
         String token = ExecService.ensureToken(
                 ctx.getSharedPreferences(ExecService.PREFS, Context.MODE_PRIVATE));
         Shell.Result r = TermuxRunner.run(ctx,
@@ -36,6 +40,7 @@ public class NapCatToken {
         Matcher m = TOKEN_RE.matcher(r.out);
         if (m.find()) {
             cached = m.group(1);
+            fetchedAt = System.currentTimeMillis();
             return cached;
         }
         return null;
