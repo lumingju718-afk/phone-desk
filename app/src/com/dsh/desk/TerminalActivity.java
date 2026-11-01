@@ -62,6 +62,29 @@ public class TerminalActivity extends Activity {
         head.setPadding(dp(10), dp(10), dp(10), dp(4));
         root.addView(head);
 
+        boolean accOn = DeskAccessibilityService.ready();
+        TextView accStatus = new TextView(this);
+        accStatus.setText(accOn ? "无障碍：已开启，/ui/* 可用"
+                : "无障碍：未开启，/ui/* 不可用（点下面按钮开启）");
+        accStatus.setTextColor(Color.parseColor(accOn ? "#3DDC84" : "#FFC857"));
+        accStatus.setTextSize(11);
+        accStatus.setPadding(dp(10), dp(2), dp(10), dp(2));
+        root.addView(accStatus);
+        if (!accOn) {
+            Button accBtn = new Button(this);
+            accBtn.setText("开启无障碍（UI 控制需要）");
+            accBtn.setTextSize(11);
+            accBtn.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+            root.addView(accBtn);
+        }
+
         if (!TermuxRunner.hasFileAccess()) {
             Button perm = new Button(this);
             perm.setText("授权「所有文件访问」（可选，文件操作更方便）");

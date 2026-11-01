@@ -183,12 +183,119 @@ public class HttpExecServer {
             return;
         }
 
+        if (path.startsWith("/ui")) {
+            handleUi(path, params, s);
+            return;
+        }
+
         if (path.equals("/") || path.isEmpty()) {
             respond(s, 200, "{\"ok\":true,\"endpoints\":[\"/ping\",\"/exec?token=&cmd=\",\"/termux?token=&cmd=\"]}");
             return;
         }
 
         respond(s, 404, "{\"ok\":false,\"error\":\"not found\"}");
+    }
+
+    private void handleUi(String path, Map<String, String> params, Socket s) throws Exception {
+        String t = params.get("token");
+        if (t == null || !t.equals(token)) {
+            respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+            return;
+        }
+        DeskAccessibilityService svc = DeskAccessibilityService.INSTANCE;
+
+        if (path.equals("/ui/on")) {
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("enabled", svc != null);
+            if (svc == null) {
+                o.put("hint", "enable in Settings > Accessibility > desk");
+            }
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (svc == null) {
+            respond(s, 503, "{\"ok\":false,\"error\":\"accessibility service not enabled\","
+                    + "\"hint\":\"Settings > Accessibility > enable desk\"}");
+            return;
+        }
+
+        JSONObject o = new JSONObject();
+        try {
+            if (path.equals("/ui/shot")) {
+                int w = parseInt(params.get("w"), 1080);
+                String b64 = svc.screenshotBase64(w);
+                if (b64 == null) {
+                    o.put("ok", false);
+                    o.put("error", "screenshot failed or unsupported");
+                } else {
+                    o.put("ok", true);
+                    o.put("mime", "image/jpeg");
+                    o.put("b64", b64);
+                }
+            } else if (path.equals("/ui/dump")) {
+                int depth = parseInt(params.get("depth"), 20);
+                respond(s, 200, svc.dumpJson(depth).toString());
+                return;
+            } else if (path.equals("/ui/tap")) {
+                float x = parseFloat(params.get("x"), -1);
+                float y = parseFloat(params.get("y"), -1);
+                o.put("ok", x >= 0 && y >= 0 && svc.tap(x, y));
+                o.put("x", x);
+                o.put("y", y);
+            } else if (path.equals("/ui/long")) {
+                o.put("ok", svc.longPress(
+                        parseFloat(params.get("x"), -1),
+                        parseFloat(params.get("y"), -1),
+                        parseInt(params.get("ms"), 600)));
+            } else if (path.equals("/ui/swipe")) {
+                o.put("ok", svc.swipe(
+                        parseFloat(params.get("x1"), -1),
+                        parseFloat(params.get("y1"), -1),
+                        parseFloat(params.get("x2"), -1),
+                        parseFloat(params.get("y2"), -1),
+                        parseInt(params.get("ms"), 300)));
+            } else if (path.equals("/ui/global")) {
+                String a = params.get("a");
+                o.put("ok", svc.global(a));
+                o.put("action", a == null ? "" : a);
+            } else if (path.equals("/ui/text")) {
+                String text = params.get("text");
+                o.put("ok", text != null && svc.setText(text));
+            } else if (path.equals("/ui/click")) {
+                String text = params.get("text");
+                String id = params.get("id");
+                boolean ok = false;
+                if (text != null && !text.isEmpty()) ok = svc.clickText(text);
+                else if (id != null && !id.isEmpty()) ok = svc.clickText(id);
+                o.put("ok", ok);
+            } else {
+                respond(s, 404, "{\"ok\":false,\"error\":\"unknown ui endpoint\"}");
+                return;
+            }
+        } catch (Throwable e) {
+            o = new JSONObject();
+            o.put("ok", false);
+            o.put("error", String.valueOf(e.getMessage()));
+        }
+        respond(s, 200, o.toString());
+    }
+
+    private static int parseInt(String s, int def) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Throwable e) {
+            return def;
+        }
+    }
+
+    private static float parseFloat(String s, float def) {
+        try {
+            return Float.parseFloat(s.trim());
+        } catch (Throwable e) {
+            return def;
+        }
     }
 
     private Map<String, String> parseQuery(String q) {

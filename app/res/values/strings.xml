@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">服务器桌面</string>
+    <string name="accessibility_desc">用于远程控制本机：读取屏幕内容、模拟点击/滑动/输入、截屏。仅在局域网内由持有 token 的客户端调用。</string>
 </resources>

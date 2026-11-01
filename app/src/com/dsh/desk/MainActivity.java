@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private final TextView[] val = new TextView[9];
     private final TextView[] sub = new TextView[9];
     private TextView btnDefault;
+    private TextView tvAcc;
 
     private volatile boolean busy = false;
 
@@ -166,6 +167,13 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         blp.topMargin = dp(12);
         col.addView(buttons, blp);
+
+        tvAcc = text("", 12, AMBER, false);
+        tvAcc.setPadding(0, dp(8), 0, 0);
+        tvAcc.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openAccessibilitySettings(); }
+        });
+        col.addView(tvAcc);
 
         btnDefault = text("点这里把本应用设为默认桌面", 12, BLUE, false);
         btnDefault.setPadding(0, dp(10), 0, dp(4));
@@ -387,6 +395,22 @@ public class MainActivity extends Activity {
         }
 
         updateDefaultButton();
+        updateAcc();
+    }
+
+    private void updateAcc() {
+        if (tvAcc == null) return;
+        boolean on = DeskAccessibilityService.ready();
+        tvAcc.setText(on ? "无障碍：已开启（UI 控制可用）"
+                : "无障碍：未开启 · 点这里开启（UI 控制需要）");
+        tvAcc.setTextColor(on ? GREEN : AMBER);
+    }
+
+    private void openAccessibilitySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } catch (Throwable ignored) {
+        }
     }
 
     private void setService(int idx, boolean on, int port) {

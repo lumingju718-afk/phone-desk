@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — 2026-11-01
+
+- 新增无障碍服务 `DeskAccessibilityService`：远程 UI 控制
+  - 手势：点击、长按、滑动
+  - 全局操作：返回、主页、多任务、通知栏、快捷设置
+  - 节点树读取、按文字点击、向输入框填文本
+  - 截图（API 30+，JPEG base64）
+- 新增 HTTP 接口：`/ui/on`、`/ui/shot`、`/ui/dump`、`/ui/tap`、`/ui/long`、
+  `/ui/swipe`、`/ui/global`、`/ui/text`、`/ui/click`
+- 主屏与终端页显示无障碍开关状态，可一键跳转系统设置
+- 版本号 0.6.0（versionCode 7）
+
 ## 0.5.1 — 2026-11-01
 
 - 新增 GitHub Actions 自动构建（`build.sh` + `.github/workflows/build.yml`）

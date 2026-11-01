@@ -4,7 +4,7 @@
 
 把一台闲置 Android 手机变成「服务器节点」的启动器（桌面）应用：主屏直接显示服务器状态，内置终端，并对外提供一套局域网 HTTP 控制接口。
 
-当前版本：**0.5.0**（versionCode 5）
+当前版本：**0.6.0**（versionCode 7）
 
 ## 功能
 
@@ -14,7 +14,8 @@
 | 服务探活 | AstrBot（6185）、NapCat（6099）、SSH（8022）端口在线/离线 |
 | ESP32 联动 | 拉取 `http://192.168.1.13/status`，显示充电/电量/守卫判定 |
 | 应用内终端 | 输入命令即时执行，滚动输出；命令以应用自身 UID 运行 |
-| 远程控制端 | 前台服务监听 `8089`，提供 `/ping`、`/exec`、`/termux` |
+| 远程控制端 | 前台服务监听 `8089`，提供 `/ping`、`/exec`、`/termux`、`/ui/*` |
+| **UI 控制（无障碍）** | 远程点击/滑动/长按、返回/主页/多任务、按文字点击、填文本、读节点树、截图 |
 | Termux 桥接 | 通过 `RUN_COMMAND` 把命令交给 Termux 执行，借用其完整工具链（python/ssh/git…），结果经 `curl` 回调回传 |
 | 开机自启 | `BOOT_COMPLETED` 接收器 + `START_STICKY` |
 | 默认桌面 | 声明 HOME 意图；未设为默认时主屏底部有引导按钮 |
@@ -26,9 +27,10 @@
 MainActivity        主屏：状态面板 + 快捷按钮 + 启动后台服务
 TerminalActivity    终端页：命令输入/输出 + 远程地址提示
 ExecService         前台服务（常驻通知），持有 HttpExecServer
-HttpExecServer      ServerSocket 实现的极简 HTTP：/ping /exec /termux /callback
+HttpExecServer      ServerSocket 实现的极简 HTTP：/ping /exec /termux /ui/* /callback
 Shell               以应用 UID 执行 /system/bin/sh
 TermuxRunner        走 Termux RUN_COMMAND，结果经回调返回
+DeskAccessibility   UI 自动化：手势/节点树/截图（需用户开启无障碍）
 BootReceiver        开机拉起 ExecService
 ```
 
@@ -90,7 +92,9 @@ bash build.sh
 4. 按提示授予：
    - `com.termux.permission.RUN_COMMAND`（Termux 桥接必需，系统弹窗点允许）
    - 「所有文件访问」（可选，便于读写共享存储）
-5. 需要替换默认桌面时，点主屏底部「设为默认桌面」
+5. **开启无障碍**（UI 控制必需）：主屏底部点「无障碍：未开启」或进终端页点「开启无障碍」，
+   在「设置 → 辅助功能 → 已下载服务」里勾选「服务器桌面」
+6. 需要替换默认桌面时，点主屏底部「设为默认桌面」
 
 ## HTTP API
 
@@ -102,19 +106,31 @@ bash build.sh
 | `GET /exec?token=&cmd=` | 以应用 UID 执行命令 |
 | `GET /termux?token=&cmd=` | 交给 Termux 执行（需 RUN_COMMAND 权限） |
 | `POST /callback?token=&id=&code=` | Termux 回传结果的内部接口 |
+| `GET /ui/on` | 无障碍服务是否已开启 |
+| `GET /ui/shot?w=1080` | 截图，返回 `{mime:"image/jpeg", b64:"..."}` |
+| `GET /ui/dump?depth=20` | 当前界面节点树（text/desc/id/bounds/clickable/editable） |
+| `GET /ui/tap?x=&y=` | 点击坐标 |
+| `GET /ui/long?x=&y=&ms=600` | 长按 |
+| `GET /ui/swipe?x1=&y1=&x2=&y2=&ms=300` | 滑动 |
+| `GET /ui/global?a=back\|home\|recents\|notif\|quick` | 全局操作 |
+| `GET /ui/text?text=` | 向当前输入框填入文本 |
+| `GET /ui/click?text=`（或 `id=`） | 按文字/资源 id 点击 |
 
 示例：
 
 ```bash
 curl -G http://192.168.1.11:8089/exec --data-urlencode "token=dshdesk1" --data-urlencode "cmd=id"
 curl -G http://192.168.1.11:8089/termux --data-urlencode "token=dshdesk1" --data-urlencode "cmd=whoami"
+curl -G http://192.168.1.11:8089/ui/on --data-urlencode "token=dshdesk1"
+curl -G http://192.168.1.11:8089/ui/tap --data-urlencode "token=dshdesk1" -d "x=540" -d "y=1200"
 ```
 
 ## 安全说明
 
-- 接口只监听局域网，但 token 是明文常量，请勿在不可信网络使用。
+- 接口只监听局域网，token 是明文常量，请勿在不可信网络使用。
 - 命令以应用自身权限运行（普通应用 UID），**没有 root**。
-- 因此无法：静默安装 APK、模拟点击/输入、读取其他应用私有数据、修改系统级设置。
+- 开启无障碍后，持有 token 的客户端可以点击、输入、读屏、截图——权限很大，请只在自己可控的网络里使用。
+- 仍然做不到：静默安装 APK、读取其他应用私有数据、修改系统级设置、绕过安全窗口。
 
 ## 目录结构
 
@@ -132,10 +148,13 @@ README.md / CHANGELOG.md
 - Termux 桥接要求 Termux 开启 `allow-external-apps=true`，且应用被授予 `RUN_COMMAND` 权限。
 - `/exec` 为应用 UID，读不到 Termux 私有目录；需要跨 UID 的操作走 `/termux`。
 - 状态面板默认探测 `192.168.1.13` 的 ESP32 灯，换网络需改 `MainActivity.ESP_URL`。
+- UI 控制要求手机**已解锁并亮屏**；无障碍不能点亮屏幕。
+- 银行/密码等安全窗口：截图返回空、节点树为空，属系统限制。
+- 截图接口约 1 次/秒，连续调用会失败。
 
 ## 版本管理
 
-- 远程仓库：`https://github.com/lumingju718-afk/phone-desk`（私有）
+- 远程仓库：`https://github.com/lumingju718-afk/phone-desk`（公开）
 - 发版：`git tag -a v0.5.1 -m "..."` 后 `git push origin main --tags`
 - 若本机访问 GitHub 需要代理：
 
