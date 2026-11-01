@@ -10,6 +10,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.StyleSpan;
+import android.text.style.TypefaceSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -25,7 +30,10 @@ import android.widget.Toast;
 
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 消息页 · 人机对话
@@ -256,8 +264,19 @@ public class ChatActivity extends Activity {
             bubbles.addView(empty);
             return;
         }
+        String lastDay = "";
+        String prevRole = "";
         for (JSONObject o : msgs) {
-            bubbles.addView(bubbleRow(o));
+            String day = dayLabel(o.optLong("ts", 0));
+            if (!day.equals(lastDay)) {
+                bubbles.addView(dateChip(day));
+                lastDay = day;
+                prevRole = "";
+            }
+            String role = o.optString("role");
+            boolean grouped = role.equals(prevRole);
+            bubbles.addView(bubbleRow(o, grouped));
+            prevRole = role;
         }
         if (typing) {
             TextView t = text("助手正在输入…", 11, DIM, false);
@@ -277,7 +296,7 @@ public class ChatActivity extends Activity {
         });
     }
 
-    private View bubbleRow(final JSONObject o) {
+    private View bubbleRow(final JSONObject o, final boolean grouped) {
         final boolean ai = ChatStore.ROLE_AI.equals(o.optString("role"));
         final boolean sys = ChatStore.ROLE_SYSTEM.equals(o.optString("role"));
         final String body = o.optString("text", "");
@@ -288,23 +307,19 @@ public class ChatActivity extends Activity {
         LinearLayout line = new LinearLayout(this);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(ai || sys ? Gravity.START : Gravity.END);
-        line.setPadding(dp(2), dp(3), dp(2), dp(3));
+        line.setPadding(dp(2), grouped ? dp(1) : dp(4), dp(2), dp(1));
 
         LinearLayout stack = new LinearLayout(this);
         stack.setOrientation(LinearLayout.VERTICAL);
         stack.setGravity(ai || sys ? Gravity.START : Gravity.END);
 
-        TextView who = text(ai ? "助手" : (sys ? "系统" : "我"), 9, DIM, false);
-        who.setPadding(dp(4), 0, dp(4), dp(2));
-        stack.addView(who);
+        if (!grouped) {
+            TextView who = text(ai ? "助手" : (sys ? "系统" : "我"), 9, DIM, false);
+            who.setPadding(dp(4), 0, dp(4), dp(2));
+            stack.addView(who);
+        }
 
-        TextView bubble = text(body, 14, TEXT, false);
-        bubble.setPadding(dp(12), dp(8), dp(12), dp(8));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(ai ? BUBBLE_AI : (sys ? Color.parseColor("#2A2320") : BUBBLE_ME));
-        g.setCornerRadius(dp(14));
-        bubble.setBackground(g);
-        bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.78));
+        LinearLayout bubble = richBubble(body, ai, sys);
         bubble.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { copyText(body); }
         });
@@ -358,6 +373,134 @@ public class ChatActivity extends Activity {
 
         line.addView(stack);
         return line;
+    }
+
+    // ---------------- 气泡内容（代码块 / 粗体 / 行内代码） ----------------
+
+    private LinearLayout richBubble(String message, boolean ai, boolean sys) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(8), dp(12), dp(8));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(ai ? BUBBLE_AI : (sys ? Color.parseColor("#2A2320") : BUBBLE_ME));
+        g.setCornerRadius(dp(14));
+        box.setBackground(g);
+        box.setClickable(true);
+        int maxW = (int) (getResources().getDisplayMetrics().widthPixels * 0.78);
+
+        List<String> segs = new ArrayList<>();
+        StringBuilder buf = new StringBuilder();
+        boolean code = false;
+        for (String line : message.split("\n", -1)) {
+            if (line.trim().startsWith("```")) {
+                if (buf.length() > 0) {
+                    segs.add((code ? "c:" : "t:") + buf);
+                    buf.setLength(0);
+                }
+                code = !code;
+                continue;
+            }
+            buf.append(line).append('\n');
+        }
+        if (buf.length() > 0) segs.add((code ? "c:" : "t:") + buf);
+
+        for (String seg : segs) {
+            boolean isCode = seg.startsWith("c:");
+            String content = seg.substring(2);
+            if (isCode) content = content.trim();
+            if (content.trim().isEmpty()) continue;
+            TextView tv = new TextView(this);
+            tv.setTextSize(isCode ? 12 : 14);
+            tv.setTextColor(isCode ? Color.parseColor("#9BE3A8") : TEXT);
+            tv.setMaxWidth(maxW);
+            if (isCode) {
+                tv.setText(content.trim());
+                tv.setTypeface(Typeface.MONOSPACE);
+                GradientDrawable cg = new GradientDrawable();
+                cg.setColor(Color.parseColor("#0A0F14"));
+                cg.setCornerRadius(dp(8));
+                tv.setBackground(cg);
+                tv.setPadding(dp(8), dp(6), dp(8), dp(6));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.topMargin = dp(4);
+                lp.bottomMargin = dp(2);
+                tv.setLayoutParams(lp);
+            } else {
+                tv.setText(inline(content.trim()));
+            }
+            box.addView(tv);
+        }
+        if (box.getChildCount() == 0) {
+            TextView tv = text(message, 14, TEXT, false);
+            tv.setMaxWidth(maxW);
+            box.addView(tv);
+        }
+        return box;
+    }
+
+    /** 处理 **粗体** 与 `行内代码` */
+    private CharSequence inline(String src) {
+        SpannableStringBuilder out = new SpannableStringBuilder();
+        int i = 0;
+        while (i < src.length()) {
+            if (src.startsWith("**", i)) {
+                int end = src.indexOf("**", i + 2);
+                if (end > i + 2) {
+                    int st = out.length();
+                    out.append(src, i + 2, end);
+                    out.setSpan(new StyleSpan(Typeface.BOLD), st, out.length(),
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    i = end + 2;
+                    continue;
+                }
+            }
+            if (src.charAt(i) == '`') {
+                int end = src.indexOf('`', i + 1);
+                if (end > i + 1) {
+                    int st = out.length();
+                    out.append(src, i + 1, end);
+                    out.setSpan(new TypefaceSpan("monospace"), st, out.length(),
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    out.setSpan(new BackgroundColorSpan(Color.parseColor("#0A0F14")),
+                            st, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    i = end + 1;
+                    continue;
+                }
+            }
+            out.append(src.charAt(i));
+            i++;
+        }
+        return out;
+    }
+
+    private View dateChip(String label) {
+        TextView t = text(label, 10, DIM, false);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, dp(10), 0, dp(4));
+        return t;
+    }
+
+    private String dayLabel(long ts) {
+        if (ts <= 0) return "";
+        Calendar now = Calendar.getInstance();
+        Calendar m = Calendar.getInstance();
+        m.setTimeInMillis(ts);
+        if (sameDay(now, m)) return "今天";
+        Calendar y = (Calendar) now.clone();
+        y.add(Calendar.DAY_OF_YEAR, -1);
+        if (sameDay(y, m)) return "昨天";
+        if (now.get(Calendar.YEAR) == m.get(Calendar.YEAR)) {
+            return String.format(Locale.CHINA, "%d月%d日",
+                    m.get(Calendar.MONTH) + 1, m.get(Calendar.DAY_OF_MONTH));
+        }
+        return String.format(Locale.CHINA, "%d年%d月%d日",
+                m.get(Calendar.YEAR), m.get(Calendar.MONTH) + 1, m.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private static boolean sameDay(Calendar a, Calendar b) {
+        return a.get(Calendar.YEAR) == b.get(Calendar.YEAR)
+                && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR);
     }
 
     // ---------------- 动作 ----------------

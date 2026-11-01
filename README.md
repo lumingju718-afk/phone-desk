@@ -22,7 +22,7 @@
 | 应用抽屉 | 长按空白处或点「应用」查看全部已安装应用 |
 | **服务日志页** | 切换查看 AstrBot / NapCat 日志尾部（自动刷新），可**启动/重启**对应服务 |
 | **WebUI Token** | 主屏直接显示 NapCat WebUI 当前 token；点按复制，长按打开带 token 的 WebUI |
-| **消息页（人机对话）** | 发消息即入队，显示 `等待应答 / 已回复 / 失败可重试`；应答引擎可切「中继 / OpenAI 兼容 / 本机 AstrBot」 |
+| **消息页（人机对话）** | 发消息即入队，显示 `等待应答 / 已回复 / 失败可重试`；支持消息分组、日期分隔、Markdown/代码块；应答引擎可切「中继 / OpenAI 兼容 / 本机 AstrBot」；通知栏可直接回复 |
 
 ## 架构
 
@@ -34,6 +34,7 @@ ChatActivity        消息页：人机对话（状态机 + 应答引擎设置 + 
 ChatEngine          对话状态机：派发、超时、成功追加回复、失败标记、重试
 ChatBrain           应答引擎：中继 / OpenAI 兼容 / AstrBot（SSE）
 ChatConfig          应答配置（模式、模型、key、提示词、AstrBot 账号）
+ChatReplyReceiver   通知栏「直接回复」：收到 RemoteInput 文本后入队并派发
 ChatStore           消息 JSONL 存储（role/status/reply_to）/ 未读数 / 通知
 SvcControl          NapCat/AstrBot 启停命令 + 端口探活
 ExecService         前台服务（常驻通知），持有 HttpExecServer

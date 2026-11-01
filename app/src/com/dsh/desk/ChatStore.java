@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -222,7 +223,7 @@ public class ChatStore {
         }
     }
 
-    /** 收到助手消息时发系统通知 */
+    /** 收到助手消息时发系统通知（带「直接回复」输入框） */
     public static void notify(Context c, String text) {
         try {
             NotificationManager nm = (NotificationManager)
@@ -231,23 +232,47 @@ public class ChatStore {
             String ch = "desk_chat";
             if (Build.VERSION.SDK_INT >= 26) {
                 NotificationChannel channel = new NotificationChannel(
-                        ch, "消息", NotificationManager.IMPORTANCE_DEFAULT);
+                        ch, "消息", NotificationManager.IMPORTANCE_HIGH);
                 nm.createNotificationChannel(channel);
             }
             Intent i = new Intent(c, ChatActivity.class);
             i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent pi = PendingIntent.getActivity(c, 0, i,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification n = new Notification.Builder(c, ch)
+
+            String preview = preview(text);
+            Notification.Builder b = new Notification.Builder(c, ch)
                     .setContentTitle("服务器桌面 · 新消息")
-                    .setContentText(text)
+                    .setContentText(preview)
+                    .setStyle(new Notification.BigTextStyle().bigText(preview))
                     .setSmallIcon(android.R.drawable.stat_notify_chat)
                     .setContentIntent(pi)
-                    .setAutoCancel(true)
-                    .build();
-            nm.notify(2, n);
+                    .setAutoCancel(true);
+
+            try {
+                RemoteInput ri = new RemoteInput.Builder(ChatReplyReceiver.REPLY_KEY)
+                        .setLabel("回复…").build();
+                Intent reply = new Intent(c, ChatReplyReceiver.class);
+                reply.setAction(ChatReplyReceiver.ACTION_REPLY);
+                PendingIntent pr = PendingIntent.getBroadcast(c, 7, reply,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                Notification.Action act = new Notification.Action.Builder(
+                        android.R.drawable.ic_menu_send, "回复", pr)
+                        .addRemoteInput(ri).build();
+                b.addAction(act);
+            } catch (Throwable ignored) {
+            }
+
+            nm.notify(2, b.build());
         } catch (Throwable ignored) {
         }
+    }
+
+    private static String preview(String text) {
+        if (text == null) return "";
+        String s = text.replaceAll("\\s+", " ").trim();
+        if (s.length() > 140) s = s.substring(0, 140) + "…";
+        return s;
     }
 
     // ---------------- 内部 ----------------
