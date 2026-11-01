@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-11-01
+
+- 新增 GitHub Actions 自动构建（`build.sh` + `.github/workflows/build.yml`）
+- push / PR / 打 `v*` 标签自动产出 APK；打标签时自动挂到 Release
+- CI 打包压缩 `classes.dex`，产物体积与本地构建一致
+
 ## 0.5.0 — 2026-11-01
 
 首个归档版本（仓库初始化）：
