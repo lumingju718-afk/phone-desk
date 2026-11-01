@@ -4,7 +4,7 @@
 
 把一台闲置 Android 手机变成「服务器节点」的启动器（桌面）应用：主屏直接显示服务器状态，内置终端，并对外提供一套局域网 HTTP 控制接口。
 
-当前版本：**0.9.0**（versionCode 13）
+当前版本：**0.10.0**（versionCode 14）
 
 ## 功能
 
@@ -22,7 +22,7 @@
 | 应用抽屉 | 长按空白处或点「应用」查看全部已安装应用 |
 | **服务日志页** | 切换查看 AstrBot / NapCat 日志尾部（自动刷新），可**启动/重启**对应服务 |
 | **WebUI Token** | 主屏直接显示 NapCat WebUI 当前 token；点按复制，长按打开带 token 的 WebUI |
-| **消息页** | 助手远程发消息到手机（带通知），用户也可在页面回复；主屏显示未读数 |
+| **消息页（人机对话）** | 发消息即入队，显示 `等待应答 / 已回复 / 失败可重试`；应答引擎可切「中继 / OpenAI 兼容 / 本机 AstrBot」 |
 
 ## 架构
 
@@ -30,8 +30,11 @@
 MainActivity        主屏：状态面板 + 快捷按钮 + 启动后台服务
 TerminalActivity    终端页：命令输入/输出 + 远程地址提示
 LogsActivity        日志页：AstrBot/NapCat 日志 + 启动/重启按钮
-ChatActivity        消息页：助手↔用户 消息气泡 + 通知
-ChatStore           消息 JSONL 存储 / 未读数 / 通知
+ChatActivity        消息页：人机对话（状态机 + 应答引擎设置 + 气泡/重试/输入中）
+ChatEngine          对话状态机：派发、超时、成功追加回复、失败标记、重试
+ChatBrain           应答引擎：中继 / OpenAI 兼容 / AstrBot（SSE）
+ChatConfig          应答配置（模式、模型、key、提示词、AstrBot 账号）
+ChatStore           消息 JSONL 存储（role/status/reply_to）/ 未读数 / 通知
 SvcControl          NapCat/AstrBot 启停命令 + 端口探活
 ExecService         前台服务（常驻通知），持有 HttpExecServer
 HttpExecServer      ServerSocket 实现的极简 HTTP：/ping /exec /termux /ui/* /callback
@@ -125,8 +128,11 @@ bash build.sh
 | `GET /ui/text?text=` | 向当前输入框填入文本 |
 | `GET /ui/click?text=`（或 `id=`） | 按文字/资源 id 点击 |
 | `GET /logs?token=&which=napcat\|astrbot&lines=200` | 读取服务日志尾部（≤500 行） |
-| `GET /chat?token=&since=` | 读取消息列表与未读数 |
-| `GET\|POST /chat/send?token=&from=ai\|user&text=` | 发送一条消息（`from=ai` 会触发手机通知） |
+| `GET /chat?token=&since=` | 读取消息列表（含 `role/status/reply_to`）、未读数、`pending` 条数 |
+| `GET\|POST /chat/send?token=&from=ai\|user&text=&reply_to=` | 发一条消息；`from=user` 会触发应答引擎，`from=ai` 会通知手机并可关联回复 |
+| `GET /chat/retry?token=&id=` | 重试一条失败的用户消息 |
+| `GET /chat/brain?token=` | 当前应答模式、是否可用、等待条数 |
+| `GET /chat/config?token=&mode=&base_url=&api_key=&model=&system_prompt=` | 读取/修改应答配置（读取时 key 打码） |
 | `GET /svc?token=&name=napcat\|astrbot&action=start\|stop\|restart` | 启动/停止/重启服务 |
 
 示例：

@@ -259,11 +259,19 @@ public class HttpExecServer {
                 return;
             }
             if (text.length() > 2000) text = text.substring(0, 2000);
-            long id = ChatStore.append(context, from, text);
-            if ("ai".equals(from)) ChatStore.notify(context, text);
+            long replyTo = parseLong(params.get("reply_to"), 0);
+            String status = "user".equals(from) ? ChatStore.ST_PENDING : ChatStore.ST_SENT;
+            long id = ChatStore.append(context, ChatStore.CONV_MAIN, from, text, status, replyTo);
+            if ("ai".equals(from)) {
+                if (replyTo > 0) ChatStore.updateStatus(context, replyTo, ChatStore.ST_SENT, null);
+                ChatStore.notify(context, text);
+            } else {
+                ChatEngine.dispatch(context, id);
+            }
             JSONObject o = new JSONObject();
             o.put("ok", true);
             o.put("id", id);
+            o.put("status", status);
             respond(s, 200, o.toString());
             return;
         }
@@ -278,12 +286,95 @@ public class HttpExecServer {
             int limit = parseInt(params.get("limit"), 100);
             if (limit < 1) limit = 1;
             if (limit > 200) limit = 200;
+            ChatStore.expireStale(context, 15L * 60 * 1000);
             List<JSONObject> msgs = ChatStore.read(context, since, limit);
             JSONArray arr = new JSONArray();
             for (JSONObject m : msgs) arr.put(m);
             JSONObject o = new JSONObject();
             o.put("ok", true);
             o.put("messages", arr);
+            o.put("pending", ChatStore.pending(context).size());
+            o.put("unread", ChatStore.unread(context));
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat/retry")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            long id = parseLong(params.get("id"), 0);
+            JSONObject m = ChatStore.find(context, id);
+            if (m == null || !ChatStore.ROLE_USER.equals(m.optString("role"))) {
+                respond(s, 400, "{\"ok\":false,\"error\":\"no such user message\"}");
+                return;
+            }
+            ChatEngine.retry(context, id);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("id", id);
+            o.put("status", ChatStore.ST_PENDING);
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat/brain")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("mode", ChatConfig.mode(context));
+            o.put("available", ChatConfig.brainReady(context));
+            o.put("pending", ChatStore.pending(context).size());
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat/config")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            JSONObject cfg = ChatConfig.load(context);
+            String[] keys = {"mode", "base_url", "api_key", "model", "system_prompt",
+                    "timeout_s", "astrbot_url", "astrbot_user", "astrbot_pass",
+                    "astrbot_session"};
+            boolean changed = false;
+            for (String k : keys) {
+                if (params.containsKey(k)) {
+                    String v = params.get(k);
+                    if ("timeout_s".equals(k)) {
+                        cfg.put(k, parseInt(v, 120));
+                    } else {
+                        cfg.put(k, v == null ? "" : v);
+                    }
+                    changed = true;
+                }
+            }
+            if (changed) ChatConfig.save(context, cfg);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("config", ChatConfig.publicView(context));
+            respond(s, 200, o.toString());
+            return;
+        }
+
+        if (path.equals("/chat/read")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            long id = parseLong(params.get("id"), 0);
+            ChatStore.markReadUpTo(context, id);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
             o.put("unread", ChatStore.unread(context));
             respond(s, 200, o.toString());
             return;
@@ -329,7 +420,8 @@ public class HttpExecServer {
                     + "\"/ping\",\"/exec?token=&cmd=\",\"/termux?token=&cmd=\","
                     + "\"/status\",\"/token?token=\","
                     + "\"/logs?token=&which=napcat|astrbot\","
-                    + "\"/chat?token=\",\"/chat/send?token=&from=ai|user&text=\","
+                    + "\"/chat?token=\",\"/chat/send?token=&from=ai|user&text=&reply_to=\","
+                    + "\"/chat/retry?token=&id=\",\"/chat/config?token=&mode=\",\"/chat/brain?token=\","
                     + "\"/svc?token=&name=napcat|astrbot&action=start|stop|restart\"]}");
             return;
         }

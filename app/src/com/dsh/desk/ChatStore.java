@@ -21,19 +21,41 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 手机 ↔ 助手 的消息存储（JSON Lines，应用私有目录） */
+/**
+ * 对话存储 v2（JSON Lines，应用私有目录）
+ *
+ * 单条消息：{id, conv, role, from, text, ts, status, reply_to, err}
+ *  - role/from：user | ai | system（from 保留给旧接口与 ESP32 网页）
+ *  - status：pending 已入队待应答 / sent 已回复 / error 失败
+ *  - 老数据没有 role/status 时按 from + sent 惰性兼容，不回写文件
+ */
 public class ChatStore {
+
+    public static final String ROLE_USER = "user";
+    public static final String ROLE_AI = "ai";
+    public static final String ROLE_SYSTEM = "system";
+
+    public static final String ST_PENDING = "pending";
+    public static final String ST_SENT = "sent";
+    public static final String ST_ERROR = "error";
+
+    public static final String CONV_MAIN = "main";
 
     private static final Object LOCK = new Object();
     private static final String FILE_NAME = "chat.jsonl";
     private static final int MAX_MESSAGES = 500;
     private static final String PREF_LAST_READ = "chat_last_read";
+    private static final String PREF_LAST_READ_ID = "chat_last_read_id";
 
     public static File file(Context c) {
         return new File(c.getFilesDir(), FILE_NAME);
     }
 
-    public static long append(Context c, String from, String text) {
+    // ---------------- 写 ----------------
+
+    /** 追加一条消息，返回 id */
+    public static long append(Context c, String conv, String role, String text,
+                              String status, long replyTo) {
         synchronized (LOCK) {
             List<String> lines = readLines(c);
             long maxId = 0;
@@ -48,9 +70,13 @@ public class ChatStore {
             try {
                 JSONObject o = new JSONObject();
                 o.put("id", id);
-                o.put("from", from);
-                o.put("text", text);
+                o.put("conv", conv == null ? CONV_MAIN : conv);
+                o.put("role", role);
+                o.put("from", role);
+                o.put("text", text == null ? "" : text);
                 o.put("ts", now);
+                o.put("status", status == null ? ST_SENT : status);
+                if (replyTo > 0) o.put("reply_to", replyTo);
                 lines.add(o.toString());
             } catch (Throwable ignored) {
             }
@@ -62,17 +88,47 @@ public class ChatStore {
         }
     }
 
+    /** 兼容旧调用：from=ai|user，按已回复处理 */
+    public static long append(Context c, String from, String text) {
+        return append(c, CONV_MAIN, from, text, ST_SENT, 0);
+    }
+
+    /** 更新某条消息的状态（找不到返回 false） */
+    public static boolean updateStatus(Context c, long id, String status, String err) {
+        synchronized (LOCK) {
+            List<String> lines = readLines(c);
+            boolean hit = false;
+            List<String> out = new ArrayList<>(lines.size());
+            for (String l : lines) {
+                try {
+                    JSONObject o = new JSONObject(l);
+                    if (o.optLong("id", 0) == id) {
+                        o.put("status", status);
+                        if (err == null || err.isEmpty()) o.remove("err");
+                        else o.put("err", err);
+                        hit = true;
+                        out.add(o.toString());
+                        continue;
+                    }
+                } catch (Throwable ignored) {
+                }
+                out.add(l);
+            }
+            if (hit) writeLines(c, out);
+            return hit;
+        }
+    }
+
+    // ---------------- 读 ----------------
+
+    /** 按 id 升序返回，惰性补齐 role/status；limit<=0 表示全部 */
     public static List<JSONObject> read(Context c, long sinceId, int limit) {
         synchronized (LOCK) {
             List<JSONObject> out = new ArrayList<>();
             for (String l : readLines(c)) {
-                try {
-                    JSONObject o = new JSONObject(l);
-                    if (o.optLong("id", 0) > sinceId) {
-                        out.add(o);
-                    }
-                } catch (Throwable ignored) {
-                }
+                JSONObject o = normalize(l);
+                if (o == null) continue;
+                if (o.optLong("id", 0) > sinceId) out.add(o);
             }
             if (limit > 0 && out.size() > limit) {
                 return new ArrayList<>(out.subList(out.size() - limit, out.size()));
@@ -81,12 +137,57 @@ public class ChatStore {
         }
     }
 
+    public static JSONObject find(Context c, long id) {
+        for (JSONObject o : read(c, 0, 0)) {
+            if (o.optLong("id", 0) == id) return o;
+        }
+        return null;
+    }
+
+    public static List<JSONObject> pending(Context c) {
+        List<JSONObject> out = new ArrayList<>();
+        for (JSONObject o : read(c, 0, 0)) {
+            if (ST_PENDING.equals(o.optString("status"))) out.add(o);
+        }
+        return out;
+    }
+
+    /** 把超过 olderThanMs 仍在 pending 的消息标为失败（打开页面/读接口时兜底） */
+    public static int expireStale(Context c, long olderThanMs) {
+        long now = System.currentTimeMillis();
+        int n = 0;
+        for (JSONObject o : pending(c)) {
+            if (now - o.optLong("ts", 0) > olderThanMs) {
+                updateStatus(c, o.optLong("id", 0), ST_ERROR, "超时未回复");
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** 给应答引擎用的对话历史（最后 limit 条，含 system 之外的 user/ai） */
+    public static List<JSONObject> history(Context c, int limit) {
+        List<JSONObject> all = read(c, 0, limit);
+        List<JSONObject> out = new ArrayList<>();
+        for (JSONObject o : all) {
+            String r = o.optString("role");
+            if (ROLE_USER.equals(r) || ROLE_AI.equals(r)) out.add(o);
+        }
+        return out;
+    }
+
+    // ---------------- 未读 ----------------
+
     public static int unread(Context c) {
         SharedPreferences sp = c.getSharedPreferences(ExecService.PREFS, Context.MODE_PRIVATE);
-        long last = sp.getLong(PREF_LAST_READ, 0);
+        long lastId = sp.getLong(PREF_LAST_READ_ID, 0);
+        long lastTs = sp.getLong(PREF_LAST_READ, 0);
         int n = 0;
         for (JSONObject o : read(c, 0, 0)) {
-            if ("ai".equals(o.optString("from")) && o.optLong("ts", 0) > last) {
+            if (!ROLE_AI.equals(o.optString("role"))) continue;
+            if (lastId > 0) {
+                if (o.optLong("id", 0) > lastId) n++;
+            } else if (o.optLong("ts", 0) > lastTs) {
                 n++;
             }
         }
@@ -94,8 +195,21 @@ public class ChatStore {
     }
 
     public static void markRead(Context c) {
-        c.getSharedPreferences(ExecService.PREFS, Context.MODE_PRIVATE)
-                .edit().putLong(PREF_LAST_READ, System.currentTimeMillis()).apply();
+        List<JSONObject> all = read(c, 0, 0);
+        long maxId = 0;
+        for (JSONObject o : all) {
+            maxId = Math.max(maxId, o.optLong("id", 0));
+        }
+        SharedPreferences sp = c.getSharedPreferences(ExecService.PREFS, Context.MODE_PRIVATE);
+        sp.edit().putLong(PREF_LAST_READ_ID, maxId)
+                .putLong(PREF_LAST_READ, System.currentTimeMillis()).apply();
+    }
+
+    public static void markReadUpTo(Context c, long id) {
+        if (id <= 0) return;
+        SharedPreferences sp = c.getSharedPreferences(ExecService.PREFS, Context.MODE_PRIVATE);
+        long cur = sp.getLong(PREF_LAST_READ_ID, 0);
+        if (id > cur) sp.edit().putLong(PREF_LAST_READ_ID, id).apply();
     }
 
     public static void clear(Context c) {
@@ -133,6 +247,21 @@ public class ChatStore {
                     .build();
             nm.notify(2, n);
         } catch (Throwable ignored) {
+        }
+    }
+
+    // ---------------- 内部 ----------------
+
+    private static JSONObject normalize(String line) {
+        try {
+            JSONObject o = new JSONObject(line);
+            if (!o.has("role")) o.put("role", o.optString("from", ROLE_AI));
+            if (!o.has("from")) o.put("from", o.optString("role", ROLE_AI));
+            if (!o.has("status")) o.put("status", ST_SENT);
+            if (!o.has("conv")) o.put("conv", CONV_MAIN);
+            return o;
+        } catch (Throwable e) {
+            return null;
         }
     }
 
