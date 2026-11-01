@@ -45,7 +45,7 @@ build = sys.argv[1]
 src = f"{build}/base.apk"
 dst = f"{build}/base_with_dex.apk"
 shutil.copyfile(src, dst)
-with zipfile.ZipFile(dst, "a") as z:
+with zipfile.ZipFile(dst, "a", zipfile.ZIP_DEFLATED) as z:
     z.write(f"{build}/dex/classes.dex", "classes.dex")
 PY
 
