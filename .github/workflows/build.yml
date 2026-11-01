@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Ensure Android SDK packages
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -x "$SDK/build-tools/34.0.0/aapt2" ] || [ ! -f "$SDK/platforms/android-34/android.jar" ]; then
+            SDKM="$(command -v sdkmanager || true)"
+            if [ -z "$SDKM" ]; then SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"; fi
+            yes | "$SDKM" --sdk_root="$SDK" --install "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        run: bash build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-desk-apk
+          path: dist/phone-desk.apk
+          if-no-files-found: error
+
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/phone-desk.apk

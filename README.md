@@ -1,5 +1,7 @@
 # 服务器桌面 · phone-desk
 
+[![build](https://github.com/lumingju718-afk/phone-desk/actions/workflows/build.yml/badge.svg)](https://github.com/lumingju718-afk/phone-desk/actions/workflows/build.yml)
+
 把一台闲置 Android 手机变成「服务器节点」的启动器（桌面）应用：主屏直接显示服务器状态，内置终端，并对外提供一套局域网 HTTP 控制接口。
 
 当前版本：**0.5.0**（versionCode 5）
@@ -62,6 +64,23 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 - 口令与密钥路径写在 `signing.properties`（**已被 .gitignore 排除，不要提交**）。
 - 文件不存在时，构建脚本会自动生成随机口令和新密钥，并写入该文件。
 - ⚠️ 换成新密钥后打的包**无法覆盖安装**旧密钥签名的版本。
+
+### Linux / CI
+
+`build.sh` 是同一套流程的 bash 实现，供 GitHub Actions 与 Linux/macOS 使用：
+
+```bash
+bash build.sh
+```
+
+## CI 自动构建
+
+`.github/workflows/build.yml`：每次 push 到 `main`、提 PR、或打 `v*` 标签时自动构建：
+
+- 使用 temurin JDK 17 + runner 自带的 Android SDK（缺 build-tools 34 / platform 34 会先 sdkmanager 安装）
+- 产物以 `phone-desk-apk` 上传为构建产物
+- 打标签时自动把 APK 附加到对应的 GitHub Release
+- CI 使用一次性随机签名密钥，仅用于验证可构建，**不能覆盖安装手机上的正式版本**
 
 ## 安装
 
