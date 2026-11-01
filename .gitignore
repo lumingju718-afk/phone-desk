@@ -1,0 +1,19 @@
+# 构建产物
+build/
+dist/
+*.apk
+*.apk.idsig
+
+# 签名密钥与口令（绝不入库）
+keystore/
+signing.properties
+
+# IDE / 系统
+.idea/
+*.iml
+.vscode/
+Thumbs.db
+.DS_Store
+
+# 运行时
+*.log
