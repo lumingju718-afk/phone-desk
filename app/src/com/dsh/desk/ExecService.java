@@ -19,6 +19,7 @@ public class ExecService extends Service {
     public static final String CHANNEL = "desk_exec";
 
     private HttpExecServer server;
+    private WebUiServer webui;
 
     public static String ensureToken(SharedPreferences sp) {
         String t = sp.getString("token", null);
@@ -44,6 +45,8 @@ public class ExecService extends Service {
         startForeground(1, n);
         server = new HttpExecServer(this, PORT, token);
         server.start();
+        webui = new WebUiServer(getApplicationContext());
+        webui.start();
     }
 
     @Override
@@ -54,6 +57,7 @@ public class ExecService extends Service {
     @Override
     public void onDestroy() {
         if (server != null) server.stop();
+        if (webui != null) webui.shutdown();
         super.onDestroy();
     }
 

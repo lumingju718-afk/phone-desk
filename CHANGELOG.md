@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0 — 2026-11-01
+
+- **公网页桌面（8090）**：手机自带一个受口令保护的网页版桌面，供内网穿透使用
+  - 页面：状态卡片（电量/内存/存储/运行时长/服务端口）、服务日志、消息收发、服务启停、NapCat token
+  - 口令登录：首次随机生成 10 位，`HttpOnly` 会话 Cookie 7 天；失败 5 次/分钟限速
+  - **安全边界**：8090 只注册 `/`、`/login`、`/logout`、`/api/{status,logs,chat,send,svc,token}`；
+    `/exec`、`/termux`、`/ui/*` 在该端口一律 404，执行能力仍只留在局域网 8089
+  - 局域网接口新增 `/webauth?token=&pass=`：读取/重设网页口令
+  - 页面 HTML 放在 `webui/*.html`，用 `tools/gen-webui.ps1` 生成 `WebUiHtml.java`（免手写转义）
+- 版本号 0.12.0（versionCode 16）
+
 ## 0.11.0 — 2026-11-01
 
 - 消息页体验完善（承接 0.10.0 的对话框架）：

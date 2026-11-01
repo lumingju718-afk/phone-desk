@@ -410,6 +410,31 @@ public class HttpExecServer {
             return;
         }
 
+        if (path.equals("/webauth")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            String np = params.get("pass");
+            JSONObject o = new JSONObject();
+            if (np != null && !np.isEmpty()) {
+                if (np.length() < 6) {
+                    respond(s, 400, "{\"ok\":false,\"error\":\"pass too short (>=6)\"}");
+                    return;
+                }
+                o.put("pass", WebUiServer.setPassword(context, np));
+                o.put("changed", true);
+            } else {
+                o.put("pass", WebUiServer.password(context));
+                o.put("changed", false);
+            }
+            o.put("ok", true);
+            o.put("port", WebUiServer.PORT);
+            respond(s, 200, o.toString());
+            return;
+        }
+
         if (path.startsWith("/ui")) {
             handleUi(path, params, s);
             return;
@@ -422,7 +447,8 @@ public class HttpExecServer {
                     + "\"/logs?token=&which=napcat|astrbot\","
                     + "\"/chat?token=\",\"/chat/send?token=&from=ai|user&text=&reply_to=\","
                     + "\"/chat/retry?token=&id=\",\"/chat/config?token=&mode=\",\"/chat/brain?token=\","
-                    + "\"/svc?token=&name=napcat|astrbot&action=start|stop|restart\"]}");
+                    + "\"/svc?token=&name=napcat|astrbot&action=start|stop|restart\","
+                    + "\"/webauth?token=&pass=\"],\"web_port\":8090}");
             return;
         }
 
