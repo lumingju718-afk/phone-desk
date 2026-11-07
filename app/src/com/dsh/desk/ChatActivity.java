@@ -3,9 +3,11 @@ package com.dsh.desk;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,10 +19,12 @@ import android.text.style.StyleSpan;
 import android.text.style.TypefaceSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -36,7 +40,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 消息页 · 人机对话
+ * 桌面（唯一界面）：左右滑动切换两页
+ *   第 0 页：服务器状态（电量/内存/存储/运行时长/网络/服务）
+ *   第 1 页：消息（人机对话）
  *
  * 状态机：发出去 pending(等待应答) → 引擎回复后 sent(已回复) / error(失败，可重试)
  * 应答引擎可切换：中继（助手在本会话回复）/ OpenAI 兼容 / AstrBot
@@ -65,13 +71,177 @@ public class ChatActivity extends Activity {
     private String lastSnapshot = "";
     private boolean atBottom = true;
 
+    // 桌面分页
+    private View[] pages = new View[2];
+    private LinearLayout dots;
+    private StatusPane statusPane;
+    private int page = 0;
+    private float downX, downY;
+    private boolean draggingPage = false;
+    private int pageWidth = 1;
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
-        setContentView(buildUi());
+        setContentView(buildDesk());
+        startExecService();
+        if (statusPane != null) statusPane.start();
         ui.post(refreshTick);
+    }
+
+    // ---------------- 桌面（两页左右滑） ----------------
+
+    private View buildDesk() {
+        pages[0] = buildStatusPage();
+        pages[1] = buildUi();
+        final FrameLayout stage = new FrameLayout(this);
+        stage.setBackgroundColor(BG);
+        stage.addView(pages[0], new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        stage.addView(pages[1], new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        pages[1].setTranslationX(9999f);      // 初始藏在右边，等测量后归位
+
+        dots = new LinearLayout(this);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        dlp.bottomMargin = dp(6);
+        dots.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { goPage(page == 0 ? 1 : 0, true); }
+        });
+        stage.addView(dots, dlp);
+        buildDots();
+
+        stage.post(new Runnable() {
+            @Override public void run() {
+                pageWidth = Math.max(1, stage.getWidth());
+                applyPageOffset(0f);
+            }
+        });
+        return stage;
+    }
+
+    private View buildStatusPage() {
+        statusPane = new StatusPane(this);
+        return statusPane.create();
+    }
+
+    private void buildDots() {
+        dots.removeAllViews();
+        for (int i = 0; i < 2; i++) {
+            TextView d = new TextView(this);
+            d.setText("●");
+            d.setTextSize(10);
+            d.setTextColor(i == page ? BLUE : DIM);
+            d.setPadding(dp(4), dp(2), dp(4), dp(2));
+            dots.addView(d);
+        }
+    }
+
+    /** 拖动时按位移移动两页 */
+    private void applyPageOffset(float dx) {
+        float w = pageWidth;
+        if (page == 0) {
+            float x = Math.max(-w, Math.min(0, dx));
+            pages[0].setTranslationX(x);
+            pages[1].setTranslationX(w + x);
+        } else {
+            float x = Math.max(0, Math.min(w, dx));
+            pages[0].setTranslationX(-w + x);
+            pages[1].setTranslationX(x);
+        }
+    }
+
+    private void goPage(final int target, boolean animate) {
+        final int from = page;
+        if (target == from) { settleTo(target); return; }
+        page = target;
+        final float w = pageWidth;
+        final float start0 = pages[0].getTranslationX();
+        final float end0 = target == 0 ? 0 : -w;
+        if (!animate) {
+            pages[0].setTranslationX(end0);
+            pages[1].setTranslationX(target == 0 ? w : 0);
+        } else {
+            final int steps = 12;
+            ui.post(new Runnable() {
+                int i = 0;
+                @Override public void run() {
+                    i++;
+                    float t = Math.min(1f, i / (float) steps);
+                    float e = 1 - (1 - t) * (1 - t);
+                    float x0 = start0 + (end0 - start0) * e;
+                    pages[0].setTranslationX(x0);
+                    pages[1].setTranslationX(x0 + w);
+                    if (t < 1f) ui.postDelayed(this, 14);
+                    else settleTo(target);
+                }
+            });
+        }
+        if (target == 1) {
+            lastSnapshot = "";
+            refresh();
+        }
+        buildDots();
+    }
+
+    private void settleTo(int target) {
+        page = target;
+        pages[0].setTranslationX(target == 0 ? 0 : -pageWidth);
+        pages[1].setTranslationX(target == 0 ? pageWidth : 0);
+        buildDots();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = ev.getX();
+                downY = ev.getY();
+                draggingPage = false;
+                break;
+            case MotionEvent.ACTION_MOVE: {
+                float dx = ev.getX() - downX;
+                float dy = ev.getY() - downY;
+                if (!draggingPage && Math.abs(dx) > dp(16) && Math.abs(dx) > Math.abs(dy) * 1.4f) {
+                    draggingPage = true;
+                }
+                if (draggingPage) {
+                    applyPageOffset(dx);
+                    return true;
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                if (draggingPage) {
+                    float dx = ev.getX() - downX;
+                    int target;
+                    if (page == 0) target = dx < -pageWidth / 5f ? 1 : 0;
+                    else target = dx > pageWidth / 5f ? 0 : 1;
+                    if (ev.getActionMasked() == MotionEvent.ACTION_CANCEL) target = page;
+                    goPage(target, true);
+                    draggingPage = false;
+                    return true;
+                }
+                break;
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private void startExecService() {
+        try {
+            Intent svc = new Intent(this, ExecService.class);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+            else startService(svc);
+        } catch (Throwable ignored) {
+        }
     }
 
     // ---------------- UI ----------------
@@ -86,10 +256,10 @@ public class ChatActivity extends Activity {
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView back = text("← 返回", 13, BLUE, false);
-        back.setPadding(dp(4), dp(4), dp(12), dp(4));
+        TextView back = text("状态", 12, DIM, false);
+        back.setPadding(dp(2), dp(4), dp(12), dp(4));
         back.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
+            @Override public void onClick(View v) { goPage(0, true); }
         });
         head.addView(back);
         head.addView(text("消息", 18, TEXT, true),
@@ -664,6 +834,7 @@ public class ChatActivity extends Activity {
     @Override
     protected void onDestroy() {
         ui.removeCallbacksAndMessages(null);
+        if (statusPane != null) statusPane.stop();
         super.onDestroy();
     }
 
