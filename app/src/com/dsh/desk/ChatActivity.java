@@ -15,6 +15,8 @@ import android.text.InputType;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.BackgroundColorSpan;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.LeadingMarginSpan;
 import android.text.style.StyleSpan;
 import android.text.style.TypefaceSpan;
 import android.view.Gravity;
@@ -49,15 +51,15 @@ import java.util.Locale;
  */
 public class ChatActivity extends Activity {
 
-    private static final int BG = Color.parseColor("#0B1014");
-    private static final int TEXT = Color.parseColor("#E6EDF3");
-    private static final int DIM = Color.parseColor("#8B98A5");
-    private static final int BLUE = Color.parseColor("#4DA3FF");
-    private static final int AMBER = Color.parseColor("#FFC857");
-    private static final int RED = Color.parseColor("#FF6B6B");
-    private static final int GREEN = Color.parseColor("#3DDC84");
-    private static final int BUBBLE_AI = Color.parseColor("#1E2A38");
-    private static final int BUBBLE_ME = Color.parseColor("#1F4D36");
+    private static final int BG = Color.parseColor("#05080A");
+    private static final int TEXT = Color.parseColor("#C6FFD2");
+    private static final int DIM = Color.parseColor("#2E7D4F");
+    private static final int BLUE = Color.parseColor("#4DD0FF");
+    private static final int AMBER = Color.parseColor("#FFD166");
+    private static final int RED = Color.parseColor("#FF5555");
+    private static final int GREEN = Color.parseColor("#33FF66");
+    private static final int BUBBLE_AI = Color.parseColor("#0A1410");
+    private static final int BUBBLE_ME = Color.parseColor("#0A1410");
 
     private static final long STALE_MS = 15L * 60 * 1000;
     private static final int TICK_MS = 1500;
@@ -256,23 +258,23 @@ public class ChatActivity extends Activity {
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView back = text("状态", 12, DIM, false);
-        back.setPadding(dp(2), dp(4), dp(12), dp(4));
+        TextView back = text("[status]", 11, DIM, false);
+        back.setPadding(dp(2), dp(4), dp(10), dp(4));
         back.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { goPage(0, true); }
         });
         head.addView(back);
-        head.addView(text("消息", 18, TEXT, true),
+        head.addView(text("root@desk:~#", 15, GREEN, true),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView gear = text("⚙", 17, DIM, false);
+        TextView gear = text("⚙", 16, DIM, false);
         gear.setPadding(dp(10), dp(4), dp(10), dp(4));
         gear.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { showSettings(); }
         });
         head.addView(gear);
 
-        TextView clear = text("清空", 12, DIM, false);
+        TextView clear = text("clear", 11, DIM, false);
         clear.setPadding(dp(6), dp(4), dp(4), dp(4));
         clear.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { confirmClear(); }
@@ -295,12 +297,12 @@ public class ChatActivity extends Activity {
         col.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        jump = text("↓ 有新消息，点这里回到底部", 12, TEXT, false);
+        jump = text("[ ↓ new output ]", 11, TEXT, false);
         jump.setGravity(Gravity.CENTER);
-        jump.setPadding(0, dp(6), 0, dp(6));
+        jump.setPadding(0, dp(5), 0, dp(5));
         GradientDrawable jg = new GradientDrawable();
-        jg.setColor(Color.parseColor("#1E6FD9"));
-        jg.setCornerRadius(dp(10));
+        jg.setColor(Color.parseColor("#0E2A1A"));
+        jg.setStroke(dp(1), DIM);
         jump.setBackground(jg);
         jump.setVisibility(View.GONE);
         jump.setOnClickListener(new View.OnClickListener() {
@@ -323,23 +325,29 @@ public class ChatActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(6), 0, 0);
 
+        TextView prompt = text("$", 15, GREEN, true);
+        prompt.setPadding(dp(2), 0, dp(6), 0);
+        row.addView(prompt);
+
         input = new EditText(this);
-        input.setHint("说点什么…");
+        input.setHint("type a command…");
         input.setHintTextColor(DIM);
         input.setTextColor(TEXT);
         input.setTextSize(14);
+        input.setTypeface(Typeface.MONOSPACE);
+        input.setBackgroundColor(Color.TRANSPARENT);
         input.setMaxLines(4);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         row.addView(input, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView send = text("发送", 14, TEXT, true);
+        TextView send = text("[enter]", 12, GREEN, true);
         send.setGravity(Gravity.CENTER);
-        send.setPadding(dp(16), dp(10), dp(16), dp(10));
+        send.setPadding(dp(10), dp(9), dp(10), dp(9));
         GradientDrawable g = new GradientDrawable();
-        g.setColor(Color.parseColor("#1E6FD9"));
-        g.setCornerRadius(dp(12));
+        g.setColor(Color.parseColor("#0E2A1A"));
+        g.setStroke(dp(1), GREEN);
         send.setBackground(g);
         send.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { sendMessage(); }
@@ -393,14 +401,14 @@ public class ChatActivity extends Activity {
         String mode = ChatConfig.mode(this);
         String label;
         if (ChatConfig.MODE_OPENAI.equals(mode)) {
-            label = "OpenAI · " + ChatConfig.openaiModel(this);
+            label = "openai:" + ChatConfig.openaiModel(this);
         } else if (ChatConfig.MODE_ASTRBOT.equals(mode)) {
-            label = "AstrBot · 本机模型";
+            label = "astrbot:local";
         } else {
-            label = "中继 · 助手在这里回复";
+            label = "relay:session";
         }
-        StringBuilder sb = new StringBuilder("应答：").append(label);
-        if (pending > 0) sb.append(" · ").append(pending).append(" 条等待应答");
+        StringBuilder sb = new StringBuilder("# mode=").append(label);
+        if (pending > 0) sb.append("  pending=").append(pending);
         banner.setText(sb.toString());
         banner.setTextColor(pending > 0 ? AMBER : DIM);
     }
@@ -412,18 +420,18 @@ public class ChatActivity extends Activity {
             empty.setOrientation(LinearLayout.VERTICAL);
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(0, dp(70), 0, 0);
-            TextView t1 = text("还没有消息", 15, TEXT, true);
+            TextView t1 = text("# no messages in log", 13, DIM, false);
             t1.setGravity(Gravity.CENTER);
-            TextView t2 = text("发一条试试——中继模式下我会在这里回复；\n右上角 ⚙ 可以换成 OpenAI 或本机 AstrBot。",
-                    12, DIM, false);
+            TextView t2 = text("type below, then [enter]\n@ gear = relay / openai / astrbot",
+                    11, DIM, false);
             t2.setGravity(Gravity.CENTER);
             t2.setPadding(0, dp(8), 0, dp(14));
-            TextView go = text("说一句", 13, TEXT, true);
+            TextView go = text("$ say hi", 12, GREEN, true);
             go.setGravity(Gravity.CENTER);
-            go.setPadding(dp(18), dp(9), dp(18), dp(9));
+            go.setPadding(dp(14), dp(8), dp(14), dp(8));
             GradientDrawable gg = new GradientDrawable();
-            gg.setColor(Color.parseColor("#1E6FD9"));
-            gg.setCornerRadius(dp(11));
+            gg.setColor(Color.parseColor("#0E2A1A"));
+            gg.setStroke(dp(1), GREEN);
             go.setBackground(gg);
             go.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { input.requestFocus(); }
@@ -449,8 +457,8 @@ public class ChatActivity extends Activity {
             prevRole = role;
         }
         if (typing) {
-            TextView t = text("助手正在输入…", 11, DIM, false);
-            t.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.ITALIC));
+            TextView t = text("... thinking", 11, DIM, false);
+            t.setTypeface(Typeface.MONOSPACE, Typeface.ITALIC);
             t.setPadding(dp(6), dp(8), dp(6), dp(2));
             bubbles.addView(t);
         }
@@ -474,26 +482,55 @@ public class ChatActivity extends Activity {
         final String err = o.optString("err", "");
         final long id = o.optLong("id", 0);
 
-        LinearLayout line = new LinearLayout(this);
-        line.setOrientation(LinearLayout.HORIZONTAL);
-        line.setGravity(ai || sys ? Gravity.START : Gravity.END);
-        line.setPadding(dp(2), grouped ? dp(1) : dp(4), dp(2), dp(1));
+        TextView tv = new TextView(this);
+        tv.setTextSize(13);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextColor(TEXT);
+        tv.setLineSpacing(dp(2), 1f);
+        tv.setPadding(dp(2), grouped ? dp(1) : dp(3), dp(2), dp(1));
 
-        LinearLayout stack = new LinearLayout(this);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        stack.setGravity(ai || sys ? Gravity.START : Gravity.END);
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        int a = sb.length();
+        sb.append("[").append(fmtTime(o.optLong("ts", 0))).append("] ");
+        sb.setSpan(new ForegroundColorSpan(DIM), a, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
-        if (!grouped) {
-            TextView who = text(ai ? "助手" : (sys ? "系统" : "我"), 9, DIM, false);
-            who.setPadding(dp(4), 0, dp(4), dp(2));
-            stack.addView(who);
+        String tag = ai ? "ai  > " : (sys ? "sys > " : "you > ");
+        int b = sb.length();
+        sb.append(tag);
+        sb.setSpan(new ForegroundColorSpan(ai ? BLUE : (sys ? AMBER : GREEN)),
+                b, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sb.setSpan(new StyleSpan(Typeface.BOLD), b, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+        int c = sb.length();
+        sb.append(body);
+        sb.setSpan(new ForegroundColorSpan(ai ? TEXT : Color.parseColor("#9CFFB0")),
+                c, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sb.setSpan(new LeadingMarginSpan.Standard(0, dp(7)), c, sb.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+        if (!ai && !sys) {
+            String tail;
+            int col;
+            if (ChatStore.ST_PENDING.equals(status)) {
+                tail = "  [pending]";
+                col = AMBER;
+            } else if (ChatStore.ST_ERROR.equals(status)) {
+                tail = "  [error: " + (err.isEmpty() ? "failed" : err) + "]";
+                col = RED;
+            } else {
+                tail = "  [sent]";
+                col = DIM;
+            }
+            int d = sb.length();
+            sb.append(tail);
+            sb.setSpan(new ForegroundColorSpan(col), d, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
 
-        LinearLayout bubble = richBubble(body, ai, sys);
-        bubble.setOnClickListener(new View.OnClickListener() {
+        tv.setText(sb);
+        tv.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { copyText(body); }
         });
-        bubble.setOnLongClickListener(new View.OnLongClickListener() {
+        tv.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 if (ai || sys) {
                     copyText(body);
@@ -501,48 +538,12 @@ public class ChatActivity extends Activity {
                     ChatEngine.retry(ChatActivity.this, id);
                     lastSnapshot = "";
                     refresh();
-                    Toast.makeText(ChatActivity.this, "已重发", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ChatActivity.this, "resending", Toast.LENGTH_SHORT).show();
                 }
                 return true;
             }
         });
-        stack.addView(bubble);
-
-        LinearLayout meta = new LinearLayout(this);
-        meta.setOrientation(LinearLayout.HORIZONTAL);
-        meta.setGravity(ai || sys ? Gravity.START : Gravity.END);
-        meta.setPadding(dp(4), dp(2), dp(4), 0);
-
-        TextView tm = text(fmtTime(o.optLong("ts", 0)), 9, DIM, false);
-        meta.addView(tm);
-
-        if (!ai && !sys) {
-            TextView st;
-            int color;
-            if (ChatStore.ST_PENDING.equals(status)) {
-                st = text("  ⏳ 等待应答", 9, AMBER, false);
-                color = AMBER;
-            } else if (ChatStore.ST_ERROR.equals(status)) {
-                st = text("  ⚠ " + (err.isEmpty() ? "发送失败" : err) + " · 点按重试", 9, RED, false);
-                color = RED;
-                st.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) {
-                        ChatEngine.retry(ChatActivity.this, id);
-                        lastSnapshot = "";
-                        refresh();
-                    }
-                });
-            } else {
-                st = text("  ✓ 已回复", 9, GREEN, false);
-                color = GREEN;
-            }
-            st.setTextColor(color);
-            meta.addView(st);
-        }
-        stack.addView(meta);
-
-        line.addView(stack);
-        return line;
+        return tv;
     }
 
     // ---------------- 气泡内容（代码块 / 粗体 / 行内代码） ----------------
@@ -645,9 +646,10 @@ public class ChatActivity extends Activity {
     }
 
     private View dateChip(String label) {
-        TextView t = text(label, 10, DIM, false);
+        TextView t = text("+--- " + label + " ---+", 10, DIM, false);
         t.setGravity(Gravity.CENTER);
         t.setPadding(0, dp(10), 0, dp(4));
+        t.setMaxLines(1);
         return t;
     }
 
@@ -886,7 +888,7 @@ public class ChatActivity extends Activity {
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTypeface(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
         return t;
     }
 

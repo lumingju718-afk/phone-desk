@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.1 — 2026-11-07
+
+- 桌面改成 Linux 终端风格：等宽字体、黑底绿字、$ 提示符、[status] / oot@desk:~# 头部
+- 状态页改为 neofetch 式输出：$ status --all + os/date/bat/mem/disk/uptime/net/svc/ports 字段
+- 消息页改为终端日志：`[22:01] you > 内容  [sent]` / `ai  > 内容`，状态用 [pending] [error: …] 标注，日期分隔 +--- 11月1日 ---+`r
+- 输入行改为 $  前缀 + [enter] 按钮；应答模式显示为 # mode=relay:session`r
+- 版本号 0.13.1（versionCode 19）
+
+
 ## 0.13.0 — 2026-11-07
 
 - **桌面重做：只留两页，左右滑动切换**
