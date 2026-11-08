@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $root       = 'E:\android-toolchain'
@@ -10,6 +10,12 @@ $proj  = if ($PSScriptRoot) { $PSScriptRoot } else { 'E:\work\phone-desk' }
 $app   = Join-Path $proj 'app'
 $build = Join-Path $proj 'build'
 $dist  = Join-Path $proj 'dist'
+
+# ---------- vendored GeckoView (fetched by tools/fetch-geckoview.ps1, git-ignored) ----------
+$gvDir    = Join-Path $proj '.geckoview'
+$gvLibs   = Join-Path $gvDir 'libs'
+$gvNative = Join-Path $gvDir 'native'
+$gvOmni   = Join-Path $gvDir 'omni.ja'
 
 # ---------- signing config (signing.properties is git-ignored) ----------
 $signingFile = Join-Path $proj 'signing.properties'
@@ -66,6 +72,12 @@ function Run($exe, [string[]]$argv, $what) {
 foreach ($p in @($jdk, $bt, $androidJar, (Join-Path $app 'AndroidManifest.xml'))) {
     if (-not (Test-Path $p)) { throw "missing dependency: $p" }
 }
+if (-not (Test-Path $gvLibs)) {
+    throw "missing GeckoView deps: $gvLibs`nrun:  powershell -ExecutionPolicy Bypass -File `"$proj\tools\fetch-geckoview.ps1`""
+}
+$gvJars = @(Get-ChildItem $gvLibs -Filter *.jar | ForEach-Object { $_.FullName })
+if ($gvJars.Count -eq 0) { throw "no jars in $gvLibs (re-run tools/fetch-geckoview.ps1)" }
+if (-not (Test-Path $gvOmni)) { throw "missing $gvOmni" }
 
 if (Test-Path $build) { Remove-Item $build -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $build, $dist, (Join-Path $proj 'keystore') | Out-Null
@@ -91,23 +103,40 @@ Step 'javac'
 $sources = @()
 $sources += Get-ChildItem (Join-Path $app 'src') -Filter *.java -Recurse | ForEach-Object { $_.FullName }
 $sources += Get-ChildItem $genDir -Filter *.java -Recurse | ForEach-Object { $_.FullName }
-$javacArgs = @('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-bootclasspath', $androidJar, '-d', $classes) + $sources
+$classpath = ($gvJars -join ';')
+$javacArgs = @('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-bootclasspath', $androidJar, '-classpath', $classpath, '-d', $classes) + $sources
 Run (Join-Path $jdk 'bin\javac.exe') $javacArgs 'javac'
 
 Step 'jar + d8'
 $classesJar = Join-Path $build 'classes.jar'
 Run (Join-Path $jdk 'bin\jar.exe') @('cf', $classesJar, '-C', $classes, '.') 'jar'
-Run (Join-Path $bt 'd8.bat') @('--lib', $androidJar, '--min-api', '26', '--output', $dexDir, $classesJar) 'd8'
+$d8Inputs = @($classesJar) + $gvJars
+$r8Jar = Get-ChildItem $gvDir -Filter 'r8-*.jar' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($r8Jar) {
+    Write-Host "  using R8 $($r8Jar.Name)"
+    Run (Join-Path $jdk 'bin\java.exe') (@('-cp', $r8Jar.FullName, 'com.android.tools.r8.D8', '--lib', $androidJar, '--min-api', '26', '--output', $dexDir) + $d8Inputs) 'd8'
+} else {
+    Run (Join-Path $bt 'd8.bat') (@('--lib', $androidJar, '--min-api', '26', '--output', $dexDir) + $d8Inputs) 'd8'
+}
 
-$dex = Join-Path $dexDir 'classes.dex'
-if (-not (Test-Path $dex)) { throw 'd8 produced no classes.dex' }
+$dexes = @(Get-ChildItem $dexDir -Filter 'classes*.dex' | Sort-Object Name)
+if ($dexes.Count -eq 0) { throw 'd8 produced no classes.dex' }
+Write-Host "  dex: $($dexes.Count) 个（$([math]::Round(($dexes | Measure-Object Length -Sum).Sum/1MB,1)) MB）"
 
-Step 'pack classes.dex'
+Step 'pack classes.dex + Gecko libs'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open($baseApk, 'Update')
-$existing = $zip.GetEntry('classes.dex')
-if ($existing) { $existing.Delete() }
-[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $dex, 'classes.dex', [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+foreach ($e in @($zip.Entries | Where-Object { $_.FullName -match '^classes\d*\.dex$' -or $_.FullName -like 'lib/*' -or $_.FullName -eq 'assets/omni.ja' })) { $e.Delete() }
+foreach ($d in $dexes) {
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $d.FullName, $d.Name, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+}
+foreach ($so in Get-ChildItem $gvNative -File -Filter *.so) {
+    $entry = "lib/arm64-v8a/$($so.Name)"
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $so.FullName, $entry, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    Write-Host "  + $entry  $([math]::Round($so.Length/1MB,1))MB"
+}
+[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $gvOmni, 'assets/omni.ja', [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+Write-Host "  + assets/omni.ja  $([math]::Round((Get-Item $gvOmni).Length/1MB,1))MB"
 $zip.Dispose()
 
 Step 'zipalign'

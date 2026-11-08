@@ -410,6 +410,22 @@ public class HttpExecServer {
             return;
         }
 
+        if (path.equals("/dshurl")) {
+            String t = params.get("token");
+            if (t == null || !t.equals(token)) {
+                respond(s, 403, "{\"ok\":false,\"error\":\"bad token\"}");
+                return;
+            }
+            android.content.SharedPreferences sp =
+                    context.getSharedPreferences(ExecService.PREFS, android.content.Context.MODE_PRIVATE);
+            String u = params.get("url");
+            if (u != null && !u.isEmpty()) sp.edit().putString("dsh_url", u).apply();
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("url", sp.getString("dsh_url", ""));
+            respond(s, 200, o.toString());
+            return;
+        }
         if (path.equals("/webauth")) {
             String t = params.get("token");
             if (t == null || !t.equals(token)) {

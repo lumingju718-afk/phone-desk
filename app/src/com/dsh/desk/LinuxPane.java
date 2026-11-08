@@ -35,10 +35,7 @@ public class LinuxPane {
             "ps -eo pid,rss,args | grep -Ei 'astrbot|napcat|dsh|proot|node|python3|cloudflared' " +
             "| grep -v grep | grep -v 'while true; do cloudflared' | head -10";
 
-    private static final String DSH_START =
-            "setsid nohup proot-distro login ubuntu-base -- bash -lc " +
-            "'export PATH=/usr/local/bin:$PATH; exec dsh web --host 127.0.0.1 --port 6200 --no-open' " +
-            "> ~/dsh-web.log 2>&1 < /dev/null &";
+    private static final String DSH_START = "bash ~/start-dsh.sh";
     private static final String DSH_STOP = "pkill -f 'dsh web' ; pkill -f 'dsh.*--port 6200'";
 
     /** kind: S = 走 SvcControl(astrbot/napcat)，C = 自定义命令，V = 只看 */

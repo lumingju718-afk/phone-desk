@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -79,6 +80,7 @@ public class ChatActivity extends Activity {
     private LinearLayout dots;
     private StatusPane statusPane;
     private LinuxPane linuxPane;
+    private GeckoAgentPane agentPane;
     private int page = PAGE_STATUS;
     private float pageOffset = 0f;
     private float downX, downY;
@@ -100,7 +102,7 @@ public class ChatActivity extends Activity {
     private View buildDesk() {
         pages[PAGE_LINUX] = buildLinuxPage();
         pages[PAGE_STATUS] = buildStatusPage();
-        pages[PAGE_CHAT] = buildUi();
+        pages[PAGE_CHAT] = buildAgentPage();
 
         final FrameLayout stage = new FrameLayout(this);
         stage.setBackgroundColor(BG);
@@ -134,6 +136,11 @@ public class ChatActivity extends Activity {
     private View buildLinuxPage() {
         linuxPane = new LinuxPane(this);
         return linuxPane.create();
+    }
+
+    private View buildAgentPage() {
+        agentPane = new GeckoAgentPane(this);
+        return agentPane.create();
     }
 
     private View buildStatusPage() {
@@ -209,9 +216,8 @@ public class ChatActivity extends Activity {
         if (statusPane != null) {
             if (p == PAGE_STATUS) statusPane.start(); else statusPane.stop();
         }
-        if (p == PAGE_CHAT) {
-            lastSnapshot = "";
-            refresh();
+        if (agentPane != null) {
+            if (p == PAGE_CHAT) agentPane.onShow(); else agentPane.onHide();
         }
     }
 
@@ -255,6 +261,22 @@ public class ChatActivity extends Activity {
         return super.dispatchTouchEvent(ev);
     }
 
+    /** 用手机浏览器打开容器里的 DSH Web（地址由 start-dsh.sh 推到 /dshurl） */
+    private void openDsh() {
+        try {
+            SharedPreferences sp = getSharedPreferences(ExecService.PREFS, MODE_PRIVATE);
+            String u = sp.getString("dsh_url", "");
+            if (u == null || u.isEmpty()) {
+                Toast.makeText(this, "还没拿到 DSH 地址：去最左屏点 dsh 启动", Toast.LENGTH_LONG).show();
+                return;
+            }
+            Intent it = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(u));
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(it);
+        } catch (Throwable e) {
+            Toast.makeText(this, "打开失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
     private void startExecService() {
         try {
             Intent svc = new Intent(this, ExecService.class);
@@ -285,6 +307,12 @@ public class ChatActivity extends Activity {
         head.addView(text("root@desk:~#", 15, GREEN, true),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        final TextView dshBtn = text("[dsh]", 11, GREEN, true);
+        dshBtn.setPadding(dp(8), dp(4), dp(2), dp(4));
+        dshBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openDsh(); }
+        });
+        head.addView(dshBtn);
         TextView gear = text("⚙", 16, DIM, false);
         gear.setPadding(dp(10), dp(4), dp(10), dp(4));
         gear.setOnClickListener(new View.OnClickListener() {
@@ -396,6 +424,7 @@ public class ChatActivity extends Activity {
     };
 
     private void refresh() {
+        if (bubbles == null) return;   // 消息页不在页面上（例如换成了 WebView）时不刷新
         List<JSONObject> msgs = ChatStore.read(this, 0, 0);
         StringBuilder sig = new StringBuilder();
         int pending = 0;
@@ -416,6 +445,7 @@ public class ChatActivity extends Activity {
     }
 
     private void updateBanner(int pending) {
+        if (banner == null) return;
         String mode = ChatConfig.mode(this);
         String label;
         if (ChatConfig.MODE_OPENAI.equals(mode)) {
@@ -709,8 +739,6 @@ public class ChatActivity extends Activity {
                 t, ChatStore.ST_PENDING, 0);
         input.setText("");
         atBottom = true;
-        lastSnapshot = "";
-        refresh();
         scrollToBottom();
         ChatEngine.dispatch(this, id);
     }
@@ -847,14 +875,13 @@ public class ChatActivity extends Activity {
         super.onResume();
         ChatStore.expireStale(this, STALE_MS);
         ChatStore.markRead(this);
-        lastSnapshot = "";
-        refresh();
     }
 
     @Override
     protected void onDestroy() {
         ui.removeCallbacksAndMessages(null);
         if (statusPane != null) statusPane.stop();
+        if (agentPane != null) agentPane.destroy();
         super.onDestroy();
     }
 

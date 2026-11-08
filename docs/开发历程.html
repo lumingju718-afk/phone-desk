@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机服务器桌面 · 开发历程与功能说明</title>
+<style>
+  :root{
+    --bg:#05080a; --card:#0d1418; --line:#1f3b2c; --fg:#c6ffd2;
+    --dim:#5c9b74; --green:#33ff66; --blue:#4dd0ff; --amber:#ffd166; --red:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:18px 14px 60px; background:var(--bg); color:var(--fg);
+    font:15px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    max-width:900px; margin-left:auto; margin-right:auto;
+  }
+  h1{font-size:22px; margin:0 0 4px; color:#fff}
+  h1 small{display:block; font-size:12px; color:var(--dim); font-weight:400; margin-top:6px}
+  h2{
+    font-size:17px; margin:34px 0 12px; padding-left:10px; color:var(--green);
+    border-left:3px solid var(--green);
+  }
+  h3{font-size:14.5px; margin:20px 0 8px; color:var(--blue)}
+  p{margin:8px 0}
+  code{
+    background:#0f1a14; color:var(--amber); padding:1px 5px; border-radius:4px;
+    font-family:ui-monospace,Consolas,monospace; font-size:13px;
+  }
+  pre{
+    background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:12px; overflow-x:auto; font-size:12.5px; line-height:1.6;
+    font-family:ui-monospace,Consolas,monospace; color:var(--fg);
+  }
+  pre .c{color:var(--dim)}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; margin:12px 0;
+  }
+  .meta{font-size:12px; color:var(--dim); margin-top:10px}
+  table{width:100%; border-collapse:collapse; margin:10px 0; font-size:13px}
+  th,td{border-bottom:1px solid var(--line); padding:7px 8px; text-align:left; vertical-align:top}
+  th{color:var(--green); font-weight:600; white-space:nowrap}
+  td:first-child{white-space:nowrap}
+  .tag{
+    display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px;
+    border:1px solid var(--line); color:var(--dim); margin-right:6px;
+  }
+  .ok{color:var(--green)} .warn{color:var(--amber)} .bad{color:var(--red)}
+  .timeline{border-left:2px solid var(--line); margin-left:6px; padding-left:16px}
+  .tl{position:relative; margin:12px 0}
+  .tl:before{
+    content:""; position:absolute; left:-22px; top:8px; width:9px; height:9px;
+    border-radius:50%; background:var(--green);
+  }
+  .tl b{color:#fff}
+  .tl .v{color:var(--blue); font-family:ui-monospace,monospace; font-size:12.5px}
+  .foot{margin-top:40px; font-size:12px; color:var(--dim); text-align:center}
+</style>
+</head>
+<body>
+
+<h1>手机服务器桌面（com.dsh.desk）
+  <small>开发历程 · 功能说明 · 接口速查 —— 整理于 2026-11-08，当前版本 v0.18.2</small>
+</h1>
+
+<div class="card">
+  <p><b>一句话：</b>把一台没有 root 的荣耀 X40i（Android 12）做成一台「能自己跑的服务器」——
+  开机就是自定义桌面，常驻 HTTP 控制接口，能启停容器里的服务、能远程操作界面、
+  能和电脑上的 AI 助手双向收发消息，还能把消息显示到 ESP32 小屏、用扬声器朗读。</p>
+  <p class="meta">
+    仓库：github.com/lumingju718-afk/phone-desk（公开，GitHub Actions 自动构建 APK）<br>
+    设备：荣耀 X40i（DIO-AN00）/ Android 12 / MagicUI 6.1 / aarch64 / 8GB RAM / 无 root<br>
+    构建：不依赖 Gradle，aapt2 → javac → d8 → 打包 → zipalign → apksigner 纯命令行
+  </p>
+</div>
+
+<h2>一、开发历程（按版本）</h2>
+
+<div class="timeline">
+
+<div class="tl">
+  <b>起点：把手机变成服务器</b> <span class="v">v0.5.0</span>
+  <p>主屏状态面板（时间/电量/温度/内存/存储/IP）、AstrBot &amp; NapCat &amp; SSH 端口探活、
+  应用内终端、前台服务 + HTTP 控制端（<code>/ping</code>、<code>/exec</code>）、
+  Termux 桥接（<code>RUN_COMMAND</code> + <code>/callback</code> 回传）、开机自启。</p>
+</div>
+
+<div class="tl">
+  <b>自动化构建</b> <span class="v">v0.5.1</span>
+  <p>接入 GitHub Actions：push / PR / 打 <code>v*</code> 标签自动出 APK，打标签自动挂 Release。</p>
+</div>
+
+<div class="tl">
+  <b>远程控制手机界面</b> <span class="v">v0.6.0</span>
+  <p>新增无障碍服务 <code>DeskAccessibilityService</code>：点击/长按/滑动、返回/主页/多任务/
+  通知栏、节点树读取、按文字点击、填文本、截图。配套 <code>/ui/*</code> 一组接口。
+  这是后来「我在电脑上操作手机」的地基。</p>
+</div>
+
+<div class="tl">
+  <b>修掉明文 HTTP 的坑</b> <span class="v">v0.6.1</span>
+  <p>targetSdk 31 默认禁明文 HTTP，导致主屏 ESP32 状态一直「离线」——加
+  <code>usesCleartextTraffic="true"</code>。</p>
+</div>
+
+<div class="tl">
+  <b>日志页 + 消息页</b> <span class="v">v0.7.0 – 0.7.2</span>
+  <p>服务日志页（AstrBot/NapCat 尾部 3 秒刷新、一键启停）、消息页（助手远程发消息 → 系统通知 +
+  未读，用户可回复）；新增 <code>/logs</code> <code>/chat</code> <code>/chat/send</code> <code>/svc</code>。
+  顺带修了 Termux 桥接并发临时文件冲突、日志页退出仍轮询、ANSI 颜色码等问题。</p>
+</div>
+
+<div class="tl">
+  <b>NapCat Token 上主屏</b> <span class="v">v0.8.0</span>
+  <p>从容器 <code>config/webui.json</code> 读 token，点按复制、长按打开 WebUI。</p>
+</div>
+
+<div class="tl">
+  <b>给「托管界面」用</b> <span class="v">v0.9.0</span>
+  <p><code>/status</code> 聚合状态、<code>/token</code> 读 NapCat token；所有响应加 CORS，
+  于是 ESP32 托管的网页能直接跨端口读手机数据。</p>
+</div>
+
+<div class="tl">
+  <b>消息页升级为人机对话程序</b> <span class="v">v0.10.0 – 0.11.0</span>
+  <p>消息模型 v2（<code>role/status/conv/reply_to</code>）、投递状态机
+  （等待应答 → 已回复 / 失败可重试）、三种应答引擎（中继 / OpenAI 兼容 / 本机 AstrBot）、
+  通知栏直接回复、消息分组、日期分隔、Markdown 渲染。
+  新增 <code>/chat/retry</code> <code>/chat/config</code> <code>/chat/brain</code>。</p>
+</div>
+
+<div class="tl">
+  <b>公网访问</b> <span class="v">v0.12.0 – 0.12.1</span>
+  <p>手机自带受口令保护的网页桌面（8090），配合 Cloudflare <b>命名隧道</b>
+  （<code>desk.hjzj114514.cc.cd</code>）。安全边界：8090 只暴露只读/消息/启停，
+  <code>/exec</code> <code>/termux</code> <code>/ui/*</code> 一律 404 —— 执行能力只留局域网 8089。</p>
+  <p class="warn">后记：当前宽带把该域名按名字阻断（同 IP 上别的域名正常），公网访问暂时搁置。</p>
+</div>
+
+<div class="tl">
+  <b>桌面重做：两页 → 三页</b> <span class="v">v0.13.0 – 0.14.0</span>
+  <p>删掉终端页/日志页/快捷按钮/应用抽屉，只留可左右滑的桌面：
+  状态页（neofetch 式）、消息页（终端日志风）、最左新增 <b>Linux 程序</b>页。
+  切页只刷新当前页以省电。</p>
+</div>
+
+<div class="tl">
+  <b>Linux 页从「能看」到「能操作」</b> <span class="v">v0.14.2 – 0.15.3</span>
+  <p>点一下启动/重启（AstrBot / NapCat / dsh）、长按停止（带确认）、
+  <code>$ run command…</code> 执行任意 Termux 命令。随后尝试把消息页换成内嵌 DSH，
+  因系统 WebView 太旧（缺 <code>Promise.withResolvers</code>、新语法解析失败）而回退。</p>
+</div>
+
+<div class="tl">
+  <b>GeckoView 内嵌尝试</b> <span class="v">v0.18.0 – 0.18.2</span>
+  <p>手工集成 Mozilla GeckoView（91MB AAR + 15 个依赖 + R8/D8 合并 dex +
+  <code>libxul.so</code> 147MB + <code>omni.ja</code>），APK 从 68KB 变成 <b>91MB</b>。
+  修了 d8 内部错误（换 R8 9.5.29）、清单 90 个 Gecko 服务、<code>zygotePreloadName</code>、
+  主线程初始化等。目前仍在调 Gecko 初始化。</p>
+</div>
+
+</div>
+
+<h2>二、功能全貌（现在能干什么）</h2>
+
+<h3>1. 桌面本身（HOME + LAUNCHER）</h3>
+<div class="card">
+  <p>唯一 Activity <code>ChatActivity</code>，内部三页左右滑（横滑跟手 + 松手吸附，阈值 1/5 屏宽），底部三点可点循环：</p>
+  <table>
+    <tr><th>页</th><th>内容</th><th>交互</th></tr>
+    <tr><td>Linux（最左）</td><td>astrbot / napcat / dsh / voice_desk 端口探活 + <code>ps</code> 进程列表（5 秒刷新）</td>
+      <td>点一下 = 启动/重启；长按 = 停止（确认框）；<code>$ run command…</code> 执行任意命令</td></tr>
+    <tr><td>状态（默认）</td><td><code>$ status --all</code>：os/date/bat/mem/disk/uptime/net/svc/ports</td><td>纯展示，5 秒刷新</td></tr>
+    <tr><td>消息</td><td>终端日志风的人机对话（状态徽标、Markdown、失败重试、⚙ 应答设置、右上 <code>[dsh]</code> 打开 DSH 网页）</td>
+      <td>发消息、通知栏直接回复、点重试</td></tr>
+  </table>
+</div>
+
+<h3>2. 局域网 HTTP 控制端（<code>192.168.0.103:8089</code>，token <code>dshdesk1</code>）</h3>
+<table>
+  <tr><th>接口</th><th>作用</th></tr>
+  <tr><td><code>/ping</code></td><td>探活，返回 <code>desk-exec</code></td></tr>
+  <tr><td><code>/exec?cmd=</code></td><td>以应用 UID（u0_a414）执行 shell，权限小</td></tr>
+  <tr><td><code>/termux?cmd=</code></td><td>转交 Termux（u0_a199，完整工具链），依赖 <code>allow-external-apps</code></td></tr>
+  <tr><td><code>/ui/on|shot|dump|tap|long|swipe|global|text|click</code></td><td>无障碍：截图、读界面树、点击/长按/滑动、系统键、输入文字、按文字点击</td></tr>
+  <tr><td><code>/status</code></td><td>电量/内存/存储/运行时长/IP/服务端口聚合</td></tr>
+  <tr><td><code>/logs?which=napcat|astrbot&amp;lines=</code></td><td>服务日志尾部</td></tr>
+  <tr><td><code>/svc?name=astrbot|napcat&amp;action=start|stop|restart</code></td><td>服务启停</td></tr>
+  <tr><td><code>/chat</code> <code>/chat/send?from=ai|user&amp;text=&amp;reply_to=</code></td><td>读写消息；<code>from=user</code> 触发应答引擎，<code>from=ai</code> 通知手机</td></tr>
+  <tr><td><code>/chat/retry</code> <code>/chat/brain</code> <code>/chat/config</code></td><td>重试 / 查看引擎 / 改应答配置（key 打码返回）</td></tr>
+  <tr><td><code>/token</code> <code>/webauth</code></td><td>NapCat WebUI token（60 秒缓存）/ 网页口令读写</td></tr>
+  <tr><td><code>/dshurl</code></td><td>存/读容器里 DSH Web 的带 token 地址</td></tr>
+</table>
+<p class="meta">所有响应带 CORS（<code>Access-Control-Allow-Origin: *</code>），ESP32 托管的网页可直接跨端口取数。</p>
+
+<h3>3. 网页桌面（8090，公网/内网）</h3>
+<p>口令登录（<code>HttpOnly</code> Cookie，7 天，失败 5 次/分钟限速）。页面：状态卡片、服务日志、
+消息收发、服务启停、NapCat token。<b>安全边界</b>：执行类接口在该端口一律 404。</p>
+
+<h3>4. 与电脑上 AI 助手的联动</h3>
+<div class="card">
+  <p><b>中继模式</b>（默认）：手机发消息 → 电脑上的 DSH 会话看到 → 助手把回复写回
+  <code>/chat/send?from=ai&amp;reply_to=</code> → 手机通知 + 消息页 + 可朗读/上小屏。</p>
+  <p><b>直连模式</b>：可切「OpenAI 兼容」或「本机 AstrBot」，手机自己问模型（已配置
+  <code>api.deepseek.com</code> + <code>deepseek-chat</code>，实测能回话）。</p>
+</div>
+
+<h3>5. 语音 + 小屏（Termux 侧配套）</h3>
+<table>
+  <tr><th>部件</th><th>作用</th></tr>
+  <tr><td><code>~/voice_desk/screen_server.py</code> :8091</td><td>轮询 <code>/chat</code>，用 Pillow + 系统中文字体渲染成 80×160 RGB565 位图给 ESP32；
+    另有 <code>/show?text=</code> 可把任意文字直接上屏（DSH 回复就靠它）</td></tr>
+  <tr><td><code>~/voice_desk/voice_desk.py</code></td><td>发现新的 AI 消息就 <code>termux-tts-speak</code> 用手机扬声器朗读</td></tr>
+  <tr><td>ESP32 <code>reply_screen</code></td><td>每 2 秒拉 <code>/screen.bin</code>（25600 字节）刷 ST7735</td></tr>
+  <tr><td>容器内 DSH 的 <code>AGENTS.md</code></td><td>要求它每次回答后 <code>curl /show</code> 推摘要上小屏</td></tr>
+</table>
+
+<h3>6. 容器里的服务（Linux 页管理的对象）</h3>
+<table>
+  <tr><th>程序</th><th>端口</th><th>说明</th></tr>
+  <tr><td>AstrBot</td><td>6185</td><td>proot ubuntu-base 里跑，带大量插件；可点行启动/停止</td></tr>
+  <tr><td>NapCat</td><td>6099</td><td>QQ 协议端，扫码登录</td></tr>
+  <tr><td>DSH（CLI）</td><td>6200</td><td><code>dsh web</code>，已配 DeepSeek key，可读写手机（<code>curl 127.0.0.1:8089</code>）</td></tr>
+  <tr><td>voice_desk</td><td>8091</td><td>小屏渲染服务，随开机自启</td></tr>
+  <tr><td>cloudflared</td><td>—</td><td>命名隧道守护（公网暂时搁置）</td></tr>
+</table>
+
+<h2>三、技术架构要点</h2>
+<div class="card">
+  <h3>进程与权限</h3>
+  <ul>
+    <li>App 本身 UID <code>u0_a414</code>，Termux <code>u0_a199</code>——通过 <code>com.termux.RUN_COMMAND</code> 桥接，结果经 <code>/callback</code> 回传</li>
+    <li>没有 root：<code>pm install</code> 被 SELinux 拒；系统 shell 无 <code>screencap</code>/<code>input</code>，所以截图/点击全靠无障碍服务</li>
+    <li>Termux 被冻结会导致「端口通但握手卡住」，点亮屏幕即可恢复；<code>termux-wake-lock</code> 依赖常驻通知</li>
+  </ul>
+  <h3>构建</h3>
+  <pre>aapt2 compile/link → javac(JDK17) → jar → d8/R8 → 打成 classes.dex → 注入 base.apk
+→ 打 lib/*.so + assets → zipalign -p 4 → apksigner（正式 keystore）→ dist/phone-desk.apk</pre>
+  <p>本地 <code>build.ps1</code>；CI 用 <code>build.sh</code> + 一次性密钥。<code>v0.18.x</code> 起额外需要
+  <code>tools/fetch-geckoview.ps1|sh</code> 先拉 GeckoView（<code>.geckoview/</code>，不入库）。</p>
+  <h3>数据流</h3>
+  <pre>手机消息页 ──/chat/send(from=user)──▶ ChatStore 状态机
+                                      ├─ relay: 等电脑 DSH 写回
+                                      ├─ openai: 直连 api.deepseek.com
+                                      └─ astrbot: 本机 AstrBot
+      ChatStore ──▶ screen_server(8091) ──▶ ESP32 小屏
+                └─▶ voice_desk ──termux-tts-speak──▶ 扬声器</pre>
+</div>
+
+<h2>四、踩过的坑（都是真实遇到并解决的）</h2>
+<table>
+  <tr><th>现象</th><th>原因</th><th>修法</th></tr>
+  <tr><td>ESP32 一直「离线」</td><td>targetSdk 31 默认禁明文 HTTP</td><td><code>usesCleartextTraffic="true"</code></td></tr>
+  <tr><td>并发请求输出串台</td><td>Termux 桥接临时文件同名</td><td>每次请求唯一文件名</td></tr>
+  <tr><td>小屏渲染服务「半死」：<code>/health</code> 正常但 <code>/state.json</code> 卡死</td><td>持锁时又调 <code>rebuild()</code>（不可重入锁）→ 死锁</td><td>锁内只置标记，锁外重建</td></tr>
+  <tr><td>手机 IP 变了连不上（.9 → .11 → .103）</td><td>DHCP 漂移</td><td>统一用 <code>ssh phone</code> 别名，IP 变更只改 SSH 配置；ESP32 固件自动扫网段</td></tr>
+  <tr><td>APK 装不上/不弹安装框</td><td>MagicUI 限制 + 无法静默安装</td><td><code>scp</code> 到 <code>/sdcard/Download</code> 后 <code>am start</code> VIEW，用户手点安装</td></tr>
+  <tr><td>消息页内嵌 DSH 白屏</td><td>系统 WebView 太旧：<code>Promise.withResolvers</code> 缺失 + JS 新语法解析失败</td><td>polyfill 只能救前者，语法层救不了 → 改 GeckoView</td></tr>
+  <tr><td>GeckoView 构建失败</td><td>build-tools 自带 d8 遇到 media3 类内部错误</td><td>改用 R8 9.5.29 的 D8</td></tr>
+  <tr><td>GeckoView 初始化抛异常</td><td><code>IllegalThreadStateException: Expected thread 1</code></td><td>引擎初始化必须放主线程</td></tr>
+  <tr><td>清单合并后 aapt2 报 <code>unbound prefix</code></td><td>GeckoView 清单用了 <code>tools:</code> 前缀</td><td>根节点补 <code>xmlns:tools</code></td></tr>
+  <tr><td>公网域名打不开</td><td>整个域名被网络层按 SNI 阻断（同 IP 其他域名正常）</td><td>暂停；隧道与配置本身正常</td></tr>
+</table>
+
+<h2>五、现在的状态与待办</h2>
+<div class="card">
+  <p><span class="tag">已完成</span>三屏桌面、8089 控制、8090 网页版、消息状态机、
+  无障碍 UI 自动化、语音+小屏联动、Linux 页启停服务、DeepSeek 直连（实测能回话）</p>
+  <p><span class="tag">进行中</span>GeckoView 内嵌 DSH：APK 已出（91MB，含 147MB <code>libxul.so</code>），
+  正在解决初始化/渲染。<b>备选</b>：DSH Go（原生 Flutter 客户端，已装在手机上）、dshbox（proot+GeckoView 外壳）</p>
+  <p><span class="tag">搁置</span>公网访问（域名被阻断）；AstrBot 账单/余额</p>
+  <p class="meta">关键产物：APK <code>dist/phone-desk.apk</code>、仓库 tag <code>v0.18.2</code>、
+  手机端 <code>~/voice_desk/</code>、容器 <code>/root/phone/</code>（DSH 工作区与自我控制手册）</p>
+</div>
+
+<h2>六、版本对照表</h2>
+<table>
+  <tr><th>版本</th><th>versionCode</th><th>标志性变化</th></tr>
+  <tr><td>0.5.0</td><td>1</td><td>状态面板 + /exec + Termux 桥接</td></tr>
+  <tr><td>0.6.0</td><td>7</td><td>无障碍服务 + /ui/*</td></tr>
+  <tr><td>0.7.0</td><td>9</td><td>日志页 + 消息页 + /svc</td></tr>
+  <tr><td>0.9.0</td><td>13</td><td>/status + CORS</td></tr>
+  <tr><td>0.10.0</td><td>14</td><td>对话状态机 + 三种应答引擎</td></tr>
+  <tr><td>0.12.0</td><td>16</td><td>8090 网页桌面 + 命名隧道</td></tr>
+  <tr><td>0.13.0</td><td>18</td><td>两页滑动桌面</td></tr>
+  <tr><td>0.14.0</td><td>20</td><td>三屏 + Linux 程序页</td></tr>
+  <tr><td>0.14.2</td><td>22</td><td>Linux 页可启动/停止程序</td></tr>
+  <tr><td>0.16.2</td><td>29</td><td>消息页回退 + <code>[dsh]</code> 按钮</td></tr>
+  <tr><td>0.18.0</td><td>31</td><td>GeckoView 引擎 + 91MB APK</td></tr>
+  <tr><td>0.18.2</td><td>33</td><td>Gecko 主线程初始化</td></tr>
+</table>
+
+<div class="foot">
+  手机服务器桌面 com.dsh.desk · 整理于 2026-11-08 ·
+  本文档由项目实际提交、CHANGELOG 与实测记录汇总，非虚构
+</div>
+
+</body>
+</html>

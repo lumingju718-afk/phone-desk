@@ -17,3 +17,5 @@ Thumbs.db
 
 # 运行时
 *.log
+# vendored GeckoView (fetched by tools/fetch-geckoview.ps1)
+.geckoview/
