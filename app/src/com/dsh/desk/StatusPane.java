@@ -70,7 +70,7 @@ public class StatusPane {
         col.addView(sc, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        TextView foot = mono("$ swipe left for message log", 10, DIM, false);
+        TextView foot = mono("$ <- linux   msg ->", 10, DIM, false);
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, dp(6), 0, 0);
         col.addView(foot);

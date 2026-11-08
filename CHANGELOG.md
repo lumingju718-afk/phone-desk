@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 — 2026-11-08
+
+- 桌面新增第三屏（最左）：**Linux 程序**，经 Termux 桥接取 `ps` 列出容器内进程（astrbot / napcat / dsh / proot / node / python3 / cloudflared），8 秒刷新，显示 PID / 内存 / 命令
+- 三屏顺序：Linux（左）→ 状态（中，默认）→ 消息（右），左右滑切换，底部三点可点循环
+- 切页时只刷新当前页（省电）：离开状态页/Linux 页即停止其轮询
+- 版本号 0.14.0（versionCode 20）
+
+
 ## 0.13.1 — 2026-11-07
 
 - 桌面改成 Linux 终端风格：等宽字体、黑底绿字、$ 提示符、[status] / oot@desk:~# 头部

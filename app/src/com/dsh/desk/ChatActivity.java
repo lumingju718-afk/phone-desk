@@ -73,11 +73,14 @@ public class ChatActivity extends Activity {
     private String lastSnapshot = "";
     private boolean atBottom = true;
 
-    // 桌面分页
-    private View[] pages = new View[2];
+    // 桌面分页（linux / 状态 / 消息）
+    private static final int PAGE_LINUX = 0, PAGE_STATUS = 1, PAGE_CHAT = 2, PAGE_COUNT = 3;
+    private View[] pages = new View[PAGE_COUNT];
     private LinearLayout dots;
     private StatusPane statusPane;
-    private int page = 0;
+    private LinuxPane linuxPane;
+    private int page = PAGE_STATUS;
+    private float pageOffset = 0f;
     private float downX, downY;
     private boolean draggingPage = false;
     private int pageWidth = 1;
@@ -89,22 +92,22 @@ public class ChatActivity extends Activity {
         getWindow().setNavigationBarColor(BG);
         setContentView(buildDesk());
         startExecService();
-        if (statusPane != null) statusPane.start();
         ui.post(refreshTick);
     }
 
-    // ---------------- 桌面（两页左右滑） ----------------
+    // ---------------- 桌面（三页左右滑：linux / 状态 / 消息） ----------------
 
     private View buildDesk() {
-        pages[0] = buildStatusPage();
-        pages[1] = buildUi();
+        pages[PAGE_LINUX] = buildLinuxPage();
+        pages[PAGE_STATUS] = buildStatusPage();
+        pages[PAGE_CHAT] = buildUi();
+
         final FrameLayout stage = new FrameLayout(this);
         stage.setBackgroundColor(BG);
-        stage.addView(pages[0], new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        stage.addView(pages[1], new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        pages[1].setTranslationX(9999f);      // 初始藏在右边，等测量后归位
+        for (int i = 0; i < PAGE_COUNT; i++) {
+            stage.addView(pages[i], new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
 
         dots = new LinearLayout(this);
         dots.setOrientation(LinearLayout.HORIZONTAL);
@@ -114,7 +117,7 @@ public class ChatActivity extends Activity {
         dlp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         dlp.bottomMargin = dp(6);
         dots.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { goPage(page == 0 ? 1 : 0, true); }
+            @Override public void onClick(View v) { goPage((page + 1) % PAGE_COUNT, true); }
         });
         stage.addView(dots, dlp);
         buildDots();
@@ -122,10 +125,15 @@ public class ChatActivity extends Activity {
         stage.post(new Runnable() {
             @Override public void run() {
                 pageWidth = Math.max(1, stage.getWidth());
-                applyPageOffset(0f);
+                settleTo(page);
             }
         });
         return stage;
+    }
+
+    private View buildLinuxPage() {
+        linuxPane = new LinuxPane(this);
+        return linuxPane.create();
     }
 
     private View buildStatusPage() {
@@ -134,41 +142,42 @@ public class ChatActivity extends Activity {
     }
 
     private void buildDots() {
+        if (dots == null) return;
         dots.removeAllViews();
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < PAGE_COUNT; i++) {
             TextView d = new TextView(this);
-            d.setText("●");
+            d.setText(i == page ? "\u25cf" : "\u25cb");
             d.setTextSize(10);
-            d.setTextColor(i == page ? BLUE : DIM);
-            d.setPadding(dp(4), dp(2), dp(4), dp(2));
+            d.setTextColor(i == page ? GREEN : DIM);
+            d.setPadding(dp(5), dp(2), dp(5), dp(2));
             dots.addView(d);
         }
     }
 
-    /** 拖动时按位移移动两页 */
-    private void applyPageOffset(float dx) {
-        float w = pageWidth;
-        if (page == 0) {
-            float x = Math.max(-w, Math.min(0, dx));
-            pages[0].setTranslationX(x);
-            pages[1].setTranslationX(w + x);
-        } else {
-            float x = Math.max(0, Math.min(w, dx));
-            pages[0].setTranslationX(-w + x);
-            pages[1].setTranslationX(x);
+    private void applyOffset(float offset) {
+        pageOffset = offset;
+        for (int i = 0; i < PAGE_COUNT; i++) {
+            pages[i].setTranslationX(offset + i * pageWidth);
         }
     }
 
+    private void dragOffset(float dx) {
+        float w = pageWidth;
+        float off = -page * w + dx;
+        float min = -(PAGE_COUNT - 1) * w;
+        if (off < min) off = min;
+        if (off > 0f) off = 0f;
+        applyOffset(off);
+    }
+
     private void goPage(final int target, boolean animate) {
-        final int from = page;
-        if (target == from) { settleTo(target); return; }
-        page = target;
-        final float w = pageWidth;
-        final float start0 = pages[0].getTranslationX();
-        final float end0 = target == 0 ? 0 : -w;
+        final int dst = Math.max(0, Math.min(PAGE_COUNT - 1, target));
+        if (dst == page) { settleTo(dst); return; }
+        final float start = pageOffset;
+        final float end = -dst * pageWidth;
+        page = dst;
         if (!animate) {
-            pages[0].setTranslationX(end0);
-            pages[1].setTranslationX(target == 0 ? w : 0);
+            settleTo(dst);
         } else {
             final int steps = 12;
             ui.post(new Runnable() {
@@ -177,26 +186,33 @@ public class ChatActivity extends Activity {
                     i++;
                     float t = Math.min(1f, i / (float) steps);
                     float e = 1 - (1 - t) * (1 - t);
-                    float x0 = start0 + (end0 - start0) * e;
-                    pages[0].setTranslationX(x0);
-                    pages[1].setTranslationX(x0 + w);
+                    applyOffset(start + (end - start) * e);
                     if (t < 1f) ui.postDelayed(this, 14);
-                    else settleTo(target);
+                    else settleTo(dst);
                 }
             });
         }
-        if (target == 1) {
-            lastSnapshot = "";
-            refresh();
-        }
-        buildDots();
+        onPageChanged(dst);
     }
 
     private void settleTo(int target) {
         page = target;
-        pages[0].setTranslationX(target == 0 ? 0 : -pageWidth);
-        pages[1].setTranslationX(target == 0 ? pageWidth : 0);
+        applyOffset(-target * pageWidth);
         buildDots();
+        onPageChanged(target);
+    }
+
+    private void onPageChanged(int p) {
+        if (linuxPane != null) {
+            if (p == PAGE_LINUX) linuxPane.start(); else linuxPane.stop();
+        }
+        if (statusPane != null) {
+            if (p == PAGE_STATUS) statusPane.start(); else statusPane.stop();
+        }
+        if (p == PAGE_CHAT) {
+            lastSnapshot = "";
+            refresh();
+        }
     }
 
     @Override
@@ -214,7 +230,7 @@ public class ChatActivity extends Activity {
                     draggingPage = true;
                 }
                 if (draggingPage) {
-                    applyPageOffset(dx);
+                    dragOffset(dx);
                     return true;
                 }
                 break;
@@ -223,10 +239,12 @@ public class ChatActivity extends Activity {
             case MotionEvent.ACTION_CANCEL: {
                 if (draggingPage) {
                     float dx = ev.getX() - downX;
-                    int target;
-                    if (page == 0) target = dx < -pageWidth / 5f ? 1 : 0;
-                    else target = dx > pageWidth / 5f ? 0 : 1;
-                    if (ev.getActionMasked() == MotionEvent.ACTION_CANCEL) target = page;
+                    float threshold = pageWidth / 5f;
+                    int target = page;
+                    if (ev.getActionMasked() != MotionEvent.ACTION_CANCEL) {
+                        if (dx < -threshold) target = page + 1;
+                        else if (dx > threshold) target = page - 1;
+                    }
                     goPage(target, true);
                     draggingPage = false;
                     return true;
@@ -261,7 +279,7 @@ public class ChatActivity extends Activity {
         TextView back = text("[status]", 11, DIM, false);
         back.setPadding(dp(2), dp(4), dp(10), dp(4));
         back.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { goPage(0, true); }
+            @Override public void onClick(View v) { goPage(PAGE_STATUS, true); }
         });
         head.addView(back);
         head.addView(text("root@desk:~#", 15, GREEN, true),
