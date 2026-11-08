@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.2 — 2026-11-08
+
+- Linux 页变成可交互：**点一下启动/重启**（astrbot/napcat/dsh），**长按停止**（带确认框）
+- 运行中的 `dsh` 点一下 → 从 `~/dsh-web.log` 取带 token 的地址，用手机浏览器打开 DSH Web UI
+- 新增 `$ run command…`：在 Termux 里执行任意命令并弹窗看输出
+- 进程列表过滤掉隧道守护的 `bash -c while true …` 行，只留真实服务
+- 实测：AstrBot 点行启动 → 6185 起来；长按停止 → 6185 关闭；再点 → 恢复（行状态 UP/DOWN 同步）
+- 版本号 0.14.2（versionCode 22）
+
+
 ## 0.14.0 — 2026-11-08
 
 - 桌面新增第三屏（最左）：**Linux 程序**，经 Termux 桥接取 `ps` 列出容器内进程（astrbot / napcat / dsh / proot / node / python3 / cloudflared），8 秒刷新，显示 PID / 内存 / 命令
